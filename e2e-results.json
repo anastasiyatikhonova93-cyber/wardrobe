@@ -1,0 +1,12 @@
+{
+  "passed": [],
+  "failed": [
+    {
+      "step": "Error",
+      "msg": "popup.waitForClose is not a function"
+    }
+  ],
+  "screenshots": {
+    "error": "e2e-screenshot-error.png"
+  }
+}
