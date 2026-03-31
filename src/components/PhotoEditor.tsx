@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { Camera, Link, Loader2 } from 'lucide-react'
+import { Camera, Link, Loader2, Wand2 } from 'lucide-react'
 import { uploadPhoto } from '../lib/storage'
 import { useAuth } from '../lib/auth'
 import { isDirectImageUrl, fetchOgImage } from '../lib/og'
+import { usePhotoCorrection } from '../hooks/usePhotoCorrection'
 
 interface Props {
   itemId: string
@@ -19,6 +20,14 @@ export function PhotoEditor({ itemId, currentUrl, shopUrl, onUpdateImage, onClos
   const [resolving, setResolving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const { correcting, correct } = usePhotoCorrection(user?.uid)
+
+  async function handleCorrection() {
+    const url = resolvedUrl ?? urlDraft.trim()
+    if (!url) return
+    const newUrl = await correct(url)
+    if (newUrl) setResolvedUrl(newUrl)
+  }
 
   const displayUrl = resolvedUrl ?? urlDraft.trim()
   const isDirect = isDirectImageUrl(displayUrl)
@@ -123,6 +132,17 @@ export function PhotoEditor({ itemId, currentUrl, shopUrl, onUpdateImage, onClos
 
       {!resolving && displayUrl && (
         <ImgPreview url={displayUrl} isDirect={isDirect} />
+      )}
+
+      {displayUrl && !resolving && (
+        <button
+          onClick={handleCorrection}
+          disabled={correcting}
+          className="w-full flex items-center justify-center gap-1.5 text-[11px] px-3 py-2 rounded-full bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+        >
+          {correcting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+          {correcting ? 'Обрабатываю...' : 'Коррекция фото: адаптировать под электронный гардероб'}
+        </button>
       )}
 
       <button

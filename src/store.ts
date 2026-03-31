@@ -25,6 +25,8 @@ interface WardrobeState {
   unsubscribe: () => void
 
   addClothing: (item: Omit<ClothingItem, 'id'>) => Promise<void>
+  addClothingBatch: (items: Omit<ClothingItem, 'id'>[]) => Promise<void>
+  clearWardrobe: () => Promise<void>
   removeClothing: (id: string) => Promise<void>
   updateClothing: (id: string, patch: Partial<ClothingItem>) => Promise<void>
 
@@ -123,6 +125,34 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   addClothing: async (item) => {
     if (!currentUid) return
     await addDoc(userCol(currentUid, 'wardrobe'), item)
+  },
+
+  addClothingBatch: async (items) => {
+    if (!currentUid) return
+    const BATCH_SIZE = 50
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db)
+      const chunk = items.slice(i, i + BATCH_SIZE)
+      for (const item of chunk) {
+        const ref = doc(userCol(currentUid, 'wardrobe'))
+        const clean = Object.fromEntries(
+          Object.entries(item).filter(([, v]) => v !== undefined),
+        )
+        batch.set(ref, clean)
+      }
+      await batch.commit()
+    }
+  },
+
+  clearWardrobe: async () => {
+    if (!currentUid) return
+    const snap = await getDocs(userCol(currentUid, 'wardrobe'))
+    const BATCH_SIZE = 50
+    for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db)
+      snap.docs.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref))
+      await batch.commit()
+    }
   },
 
   removeClothing: async (id) => {
