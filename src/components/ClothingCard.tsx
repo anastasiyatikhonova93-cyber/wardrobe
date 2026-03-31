@@ -32,7 +32,7 @@ export function ClothingCard({ item, onRemove, onUpdateImage }: Props) {
       )}
 
       <div className="p-3">
-        <p className="text-sm font-medium truncate">{item.name}</p>
+        <p className="text-sm font-medium leading-tight">{item.name}</p>
         <p className="text-xs text-zinc-400 mt-0.5">
           {CATEGORY_LABELS[item.category]} · {item.color}
         </p>

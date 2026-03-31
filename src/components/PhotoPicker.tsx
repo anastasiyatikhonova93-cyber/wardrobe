@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
-import { Camera, Link, X, Loader2 } from 'lucide-react'
+import { Camera, Link, X, Loader2, Wand2 } from 'lucide-react'
 import { uploadPhoto } from '../lib/storage'
 import { useAuth } from '../lib/auth'
 import { isDirectImageUrl, fetchOgImage } from '../lib/og'
+import { usePhotoCorrection } from '../hooks/usePhotoCorrection'
 
 interface Props {
   value: string
@@ -16,6 +17,13 @@ export function PhotoPicker({ value, onChange }: Props) {
   const [uploading, setUploading] = useState(false)
   const [resolving, setResolving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const { correcting, correct } = usePhotoCorrection(user?.uid)
+
+  async function handleCorrection() {
+    if (!value) return
+    const newUrl = await correct(value)
+    if (newUrl) onChange(newUrl)
+  }
 
   async function handleFile(file: File) {
     if (!user) return
@@ -48,7 +56,17 @@ export function PhotoPicker({ value, onChange }: Props) {
     <div>
       <label className="text-xs text-zinc-400 mb-1 block">Фото</label>
       {value ? (
-        <Preview src={value} onClear={() => onChange('')} />
+        <>
+          <Preview src={value} onClear={() => onChange('')} />
+          <button
+            onClick={handleCorrection}
+            disabled={correcting}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] px-3 py-2 rounded-full bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+          >
+            {correcting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+            {correcting ? 'Обрабатываю...' : 'Коррекция фото: адаптировать под электронный гардероб'}
+          </button>
+        </>
       ) : resolving ? (
         <div className="w-full aspect-[4/3] rounded-xl bg-zinc-50 border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center gap-2">
           <Loader2 size={24} className="text-zinc-300 animate-spin" />

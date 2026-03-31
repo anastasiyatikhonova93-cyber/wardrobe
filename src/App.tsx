@@ -8,6 +8,9 @@ import { WardrobePage } from './pages/WardrobePage'
 import { ShoppingPage } from './pages/ShoppingPage'
 import { OutfitsPage } from './pages/OutfitsPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { ImportPage } from './pages/ImportPage'
+import { SeedPage } from './pages/SeedPage'
+import { FixPhotosPage } from './pages/FixPhotosPage'
 import { Loader2 } from 'lucide-react'
 
 export default function App() {
@@ -42,6 +45,9 @@ function AppShell() {
         <Route path="/shopping" element={<ShoppingPage />} />
         <Route path="/outfits" element={<OutfitsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/import" element={<ImportPage />} />
+        <Route path="/seed" element={<SeedPage />} />
+        <Route path="/fix-photos" element={<FixPhotosPage />} />
       </Routes>
     </Layout>
   )

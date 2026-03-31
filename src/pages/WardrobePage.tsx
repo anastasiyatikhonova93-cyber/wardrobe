@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Upload } from 'lucide-react'
 import { useStore } from '../store'
 import type { ClothingCategory } from '../types'
 import { CATEGORY_LABELS } from '../types'
@@ -44,12 +45,23 @@ export function WardrobePage() {
 }
 
 function Header({ onAdd }: { onAdd: () => void }) {
+  const navigate = useNavigate()
+
   return (
     <div className="flex items-center justify-between mb-4">
       <h1 className="text-xl font-semibold">Гардероб</h1>
-      <button onClick={onAdd} className="rounded-full bg-black text-white p-2.5 transition-transform active:scale-95">
-        <Plus size={18} />
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => navigate('/import')}
+          className="rounded-full bg-zinc-100 text-zinc-600 p-2.5 transition-transform active:scale-95 hover:bg-zinc-200"
+          title="Импорт фото"
+        >
+          <Upload size={18} />
+        </button>
+        <button onClick={onAdd} className="rounded-full bg-black text-white p-2.5 transition-transform active:scale-95">
+          <Plus size={18} />
+        </button>
+      </div>
     </div>
   )
 }
