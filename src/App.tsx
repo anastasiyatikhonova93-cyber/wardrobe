@@ -11,6 +11,8 @@ import { ProfilePage } from './pages/ProfilePage'
 import { ImportPage } from './pages/ImportPage'
 import { SeedPage } from './pages/SeedPage'
 import { FixPhotosPage } from './pages/FixPhotosPage'
+import { InvitePage } from './pages/InvitePage'
+import { SharedWardrobesPage } from './pages/SharedWardrobesPage'
 import { Loader2 } from 'lucide-react'
 
 export default function App() {
@@ -36,7 +38,14 @@ function AppShell() {
     return <LoadingScreen />
   }
 
-  if (!user) return <AuthPage />
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/invite/:token" element={<InvitePage />} />
+        <Route path="*" element={<AuthPage />} />
+      </Routes>
+    )
+  }
 
   return (
     <Layout>
@@ -48,6 +57,8 @@ function AppShell() {
         <Route path="/import" element={<ImportPage />} />
         <Route path="/seed" element={<SeedPage />} />
         <Route path="/fix-photos" element={<FixPhotosPage />} />
+        <Route path="/invite/:token" element={<InvitePage />} />
+        <Route path="/shared" element={<SharedWardrobesPage />} />
       </Routes>
     </Layout>
   )
