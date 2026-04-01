@@ -11,7 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
+# .env tracked in git (Firebase client keys are public by design)
 
 # Editor directories and files
 .vscode/*
