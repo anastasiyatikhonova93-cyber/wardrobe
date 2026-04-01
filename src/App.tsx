@@ -6,7 +6,6 @@ import { Layout } from './components/Layout'
 import { AuthPage } from './pages/AuthPage'
 import { WardrobePage } from './pages/WardrobePage'
 import { ShoppingPage } from './pages/ShoppingPage'
-import { OutfitsPage } from './pages/OutfitsPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ImportPage } from './pages/ImportPage'
 import { SeedPage } from './pages/SeedPage'
@@ -43,7 +42,6 @@ function AppShell() {
       <Routes>
         <Route path="/" element={<WardrobePage />} />
         <Route path="/shopping" element={<ShoppingPage />} />
-        <Route path="/outfits" element={<OutfitsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/import" element={<ImportPage />} />
         <Route path="/seed" element={<SeedPage />} />

@@ -25,6 +25,19 @@ export async function uploadPhoto(file: File | Blob, _uid: string): Promise<stri
   }
 }
 
+function hasTransparency(img: HTMLImageElement): boolean {
+  const c = document.createElement('canvas')
+  c.width = Math.min(img.width, 64)
+  c.height = Math.min(img.height, 64)
+  const ctx = c.getContext('2d')!
+  ctx.drawImage(img, 0, 0, c.width, c.height)
+  const data = ctx.getImageData(0, 0, c.width, c.height).data
+  for (let i = 3; i < data.length; i += 16) {
+    if (data[i] < 250) return true
+  }
+  return false
+}
+
 export function compressToDataUrl(
   img: HTMLImageElement,
   maxDim = MAX_DIMENSION,
@@ -37,13 +50,22 @@ export function compressToDataUrl(
     height = Math.round(height * ratio)
   }
 
+  const transparent = hasTransparency(img)
+
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, width, height)
+
+  if (!transparent) {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+  }
+
   ctx.drawImage(img, 0, 0, width, height)
 
+  if (transparent) {
+    return canvas.toDataURL('image/png')
+  }
   return canvas.toDataURL('image/jpeg', quality)
 }
