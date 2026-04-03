@@ -1,10 +1,9 @@
 import { NavLink } from 'react-router-dom'
-import { Shirt, ShoppingBag, LayoutGrid, User } from 'lucide-react'
+import { Shirt, ShoppingBag, User } from 'lucide-react'
 
 const links = [
   { to: '/', icon: Shirt, label: 'Гардероб' },
   { to: '/shopping', icon: ShoppingBag, label: 'Хочу купить' },
-  { to: '/outfits', icon: LayoutGrid, label: 'Образы' },
   { to: '/profile', icon: User, label: 'Профиль' },
 ]
 

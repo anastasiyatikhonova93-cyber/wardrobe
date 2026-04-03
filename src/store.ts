@@ -50,6 +50,7 @@ interface WardrobeState {
 
   addOutfit: (outfit: Omit<Outfit, 'id'>) => Promise<void>
   removeOutfit: (id: string) => Promise<void>
+  updateOutfit: (id: string, patch: Partial<Outfit>) => Promise<void>
   setOutfits: (outfits: Omit<Outfit, 'id'>[]) => Promise<void>
 
   updateProfile: (patch: Partial<Profile>) => Promise<void>
@@ -102,7 +103,7 @@ function subscribeToData(uid: string, set: (partial: Partial<WardrobeState> | ((
       checkLoaded()
     }, onErr),
     onSnapshot(userCol(uid, 'outfits'), (snap) => {
-      set({ outfits: snap.docs.map((d) => ({ wardrobeItemIds: [], shoppingItemIds: [], ...d.data(), id: d.id } as unknown as Outfit)) })
+      set({ outfits: snap.docs.map((d) => ({ wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], ...d.data(), id: d.id } as unknown as Outfit)) })
       checkLoaded()
     }, onErr),
     onSnapshot(userCol(uid, 'features'), (snap) => {
@@ -312,6 +313,11 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   removeOutfit: async (id) => {
     if (!viewingUid) return
     await deleteDoc(userDoc(viewingUid, 'outfits', id))
+  },
+
+  updateOutfit: async (id, patch) => {
+    if (!viewingUid) return
+    await updateDoc(userDoc(viewingUid, 'outfits', id), patch)
   },
 
   setOutfits: async (outfits) => {

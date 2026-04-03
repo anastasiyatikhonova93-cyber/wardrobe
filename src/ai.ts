@@ -242,8 +242,46 @@ export async function analyzeWardrobe(
       shoppingItemIds: shoppingIds,
       season: o.season as Season,
       occasion: o.occasion,
+      itemPositions: [],
     }
   })
 
   return { suggestions, outfits }
+}
+
+export async function generateOutfitName(
+  items: ClothingItem[],
+  season: Season,
+  occasion?: string,
+): Promise<string> {
+  const itemsList = items.map((i) => describeItem(i)).join(', ')
+  const prompt = `Придумай короткое (2-4 слова) название для образа НА РУССКОМ ЯЗЫКЕ.
+Вещи: ${itemsList}
+Сезон: ${SEASON_LABELS[season]}
+${occasion ? `Повод: ${occasion}` : ''}
+
+Название должно отражать настроение и стиль образа, быть запоминающимся.
+Примеры: «Городская прогулка», «Деловой шик», «Уютный вечер», «Весенняя свежесть».
+Ответь ТОЛЬКО названием на русском языке, без кавычек и пояснений.`
+
+  const res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${LLM_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: LLM_MODEL,
+      messages: [
+        { role: 'system', content: 'Ты стилист. Отвечай только на русском языке.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.8,
+    }),
+  })
+  if (!res.ok) return `${SEASON_LABELS[season]}: образ`
+  const data = await res.json()
+  const name = data?.choices?.[0]?.message?.content?.trim()
+  if (!name) return `${SEASON_LABELS[season]}: образ`
+  return name.replace(/^["«]|["»]$/g, '')
 }

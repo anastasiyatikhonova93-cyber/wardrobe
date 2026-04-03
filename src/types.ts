@@ -46,6 +46,13 @@ export interface ShoppingItem {
   needColorAdvice?: boolean
 }
 
+export interface OutfitItemPosition {
+  itemId: string
+  x: number
+  y: number
+  scale: number
+}
+
 export interface Outfit {
   id: string
   name: string
@@ -53,6 +60,7 @@ export interface Outfit {
   shoppingItemIds: string[]
   season: Season
   occasion?: string
+  itemPositions: OutfitItemPosition[]
 }
 
 export interface BodyFeature {
@@ -86,6 +94,17 @@ export const SEASON_LABELS: Record<Season, string> = {
   summer: 'Лето',
   autumn: 'Осень',
   winter: 'Зима',
+}
+
+export const CATEGORY_SCALE: Record<ClothingCategory, number> = {
+  tops: 1.0,
+  bottoms: 1.4,
+  dresses: 1.8,
+  outerwear: 1.7,
+  knitwear: 1.0,
+  shoes: 0.45,
+  bags: 0.7,
+  accessories: 0.35,
 }
 
 export const BODY_TYPE_LABELS: Record<BodyType, string> = {
