@@ -114,3 +114,25 @@ export const BODY_TYPE_LABELS: Record<BodyType, string> = {
   rectangle: 'Прямоугольник',
   'inverted-triangle': 'Перевёрнутый треугольник',
 }
+
+export interface Invite {
+  token: string
+  ownerUid: string
+  ownerName: string
+  createdAt: Date
+  used: boolean
+  acceptedBy?: string
+}
+
+export interface Collaborator {
+  uid: string
+  role: 'stylist'
+  displayName: string
+  email: string
+  addedAt: Date
+}
+
+export interface SharedWardrobe {
+  ownerUid: string
+  ownerName: string
+}

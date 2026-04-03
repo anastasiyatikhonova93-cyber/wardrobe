@@ -3,7 +3,7 @@ import type { BodyFeature } from '../types'
 
 interface Props {
   feature: BodyFeature
-  onRemove: (id: string) => void
+  onRemove?: (id: string) => void
 }
 
 export function BodyFeatureRow({ feature, onRemove }: Props) {
@@ -18,9 +18,11 @@ export function BodyFeatureRow({ feature, onRemove }: Props) {
         <span className="text-xs text-zinc-400">({label})</span>
         {feature.note && <span className="text-xs text-zinc-300 truncate">— {feature.note}</span>}
       </div>
-      <button onClick={() => onRemove(feature.id)} className="rounded-full p-1 hover:bg-zinc-100 transition-colors">
-        <Trash2 size={14} className="text-zinc-400" />
-      </button>
+      {onRemove && (
+        <button onClick={() => onRemove(feature.id)} className="rounded-full p-1 hover:bg-zinc-100 transition-colors">
+          <Trash2 size={14} className="text-zinc-400" />
+        </button>
+      )}
     </div>
   )
 }

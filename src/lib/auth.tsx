@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u)
       setLoading(false)
     })
-    return unsub
+    return () => unsub()
   }, [])
 
   async function signIn() {
