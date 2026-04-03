@@ -13,6 +13,7 @@ import {
   query,
   where,
   serverTimestamp,
+  runTransaction,
   type Unsubscribe,
 } from 'firebase/firestore'
 import { db } from './lib/firebase'
@@ -68,6 +69,7 @@ let unsubs: Unsubscribe[] = []
 let sharedUnsubs: Unsubscribe[] = []
 let authUid: string | null = null
 let viewingUid: string | null = null
+let safetyTimer: ReturnType<typeof setTimeout> | null = null
 
 function userCol(uid: string, name: string) {
   return collection(db, 'capsule', uid, name)
@@ -85,6 +87,10 @@ function subscribeToData(uid: string, set: (partial: Partial<WardrobeState> | ((
   let loaded = 0
   const checkLoaded = () => { if (++loaded >= 5) set({ loading: false }) }
   const onErr = () => checkLoaded()
+
+  // Safety timeout — if listeners don't all fire in 5s, stop loading anyway
+  if (safetyTimer) clearTimeout(safetyTimer)
+  safetyTimer = setTimeout(() => { safetyTimer = null; set({ loading: false }) }, 5000)
 
   unsubs.push(
     onSnapshot(userCol(uid, 'wardrobe'), (snap) => {
@@ -151,7 +157,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
             ...d.data(),
           } as unknown as Collaborator)),
         })
-      }),
+      }, () => { /* ignore permission errors */ }),
     )
 
     // Subscribe to shared wardrobes (whose wardrobes I have access to)
@@ -166,13 +172,17 @@ export const useStore = create<WardrobeState>()((set, get) => ({
             ownerName: d.data().ownerName,
           } as SharedWardrobe)),
         })
-      }),
+      }, () => { /* ignore index/permission errors */ }),
     )
   },
 
   unsubscribe: () => {
     unsubs.forEach((u) => u())
     unsubs = []
+    sharedUnsubs.forEach((u) => u())
+    sharedUnsubs = []
+    if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null }
+    authUid = null
     viewingUid = null
     set({ wardrobe: [], shopping: [], outfits: [], profile: defaultProfile, isSharedView: false, sharedViewOwnerName: '' })
   },
@@ -229,7 +239,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   },
 
   clearWardrobe: async () => {
-    if (!viewingUid) return
+    if (!viewingUid || get().isSharedView) return
     const snap = await getDocs(userCol(viewingUid, 'wardrobe'))
     const BATCH_SIZE = 50
     for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {
@@ -305,7 +315,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   },
 
   setOutfits: async (outfits) => {
-    if (!viewingUid) return
+    if (!viewingUid || get().isSharedView) return
     const snap = await getDocs(userCol(viewingUid, 'outfits'))
     const batch = writeBatch(db)
     snap.docs.forEach((d) => batch.delete(d.ref))
@@ -343,23 +353,29 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   },
 
   acceptInvite: async (token) => {
-    if (!authUid) throw new Error('Not authenticated')
+    const uid = authUid
+    if (!uid) throw new Error('Not authenticated')
     const inviteRef = doc(db, 'invites', token)
-    const snap = await getDoc(inviteRef)
-    if (!snap.exists()) throw new Error('Приглашение не найдено')
-    const data = snap.data()
-    if (data.used) throw new Error('Приглашение уже использовано')
-    if (data.ownerUid === authUid) throw new Error('Нельзя принять своё приглашение')
 
-    await updateDoc(inviteRef, { used: true, acceptedBy: authUid })
-    await setDoc(doc(db, 'capsule', data.ownerUid, 'collaborators', authUid), {
-      role: 'stylist',
-      displayName: auth.currentUser?.displayName ?? '',
-      email: auth.currentUser?.email ?? '',
-      addedAt: serverTimestamp(),
+    const data = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(inviteRef)
+      if (!snap.exists()) throw new Error('Приглашение не найдено')
+      const d = snap.data()
+      if (d.used) throw new Error('Приглашение уже использовано')
+      if (d.ownerUid === uid) throw new Error('Нельзя принять своё приглашение')
+
+      tx.update(inviteRef, { used: true, acceptedBy: uid })
+      tx.set(doc(db, 'capsule', d.ownerUid, 'collaborators', uid), {
+        role: 'stylist',
+        displayName: auth.currentUser?.displayName ?? '',
+        email: auth.currentUser?.email ?? '',
+        addedAt: serverTimestamp(),
+      })
+
+      return { ownerUid: d.ownerUid, ownerName: d.ownerName }
     })
 
-    return { ownerUid: data.ownerUid, ownerName: data.ownerName }
+    return data
   },
 
   removeCollaborator: async (uid) => {
