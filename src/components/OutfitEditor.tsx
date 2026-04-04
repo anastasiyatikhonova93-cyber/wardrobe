@@ -1,12 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Plus, Trash2, Check, ArrowLeft, Loader2 } from 'lucide-react'
 import { useStore } from '../store'
-import type { Outfit, OutfitItemPosition, Season, ClothingItem } from '../types'
-import { SEASON_LABELS, CATEGORY_SCALE } from '../types'
+import type { Outfit, OutfitItemPosition, Season, ClothingItem, ClothingCategory } from '../types'
+import { SEASON_LABELS, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
 import { TransparentImg } from './TransparentImg'
 import { generateOutfitName } from '../ai'
 
 const ALL_SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter']
+const CATEGORIES = Object.keys(CATEGORY_LABELS) as ClothingCategory[]
 
 interface Props {
   outfit: Outfit | null
@@ -49,6 +50,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
     return []
   })
   const [showPicker, setShowPicker] = useState(false)
+  const [pickerFilter, setPickerFilter] = useState<ClothingCategory | 'all'>('all')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -172,6 +174,9 @@ export function OutfitEditor({ outfit, onClose }: Props) {
   }
 
   const availableItems = wardrobe.filter((i) => !itemIds.includes(i.id))
+  const filteredPickerItems = pickerFilter === 'all'
+    ? availableItems
+    : availableItems.filter((i) => i.category === pickerFilter)
 
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
@@ -293,7 +298,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
 
           {/* Add items button */}
           <button
-            onClick={() => setShowPicker(true)}
+            onClick={() => { setPickerFilter('all'); setShowPicker(true) }}
             className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-300 text-sm text-zinc-500 hover:border-zinc-400 transition-colors"
           >
             <Plus size={16} />
@@ -326,12 +331,37 @@ export function OutfitEditor({ outfit, onClose }: Props) {
                 <X size={18} />
               </button>
             </div>
-            <div className="overflow-y-auto max-h-[calc(70vh-60px)] p-4">
+            <div className="px-4 pt-3 pb-1">
+              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+                <button
+                  onClick={() => setPickerFilter('all')}
+                  className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs transition-colors ${
+                    pickerFilter === 'all' ? 'bg-black text-white' : 'bg-zinc-100 text-zinc-500'
+                  }`}
+                >
+                  Все
+                </button>
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setPickerFilter(c)}
+                    className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs transition-colors ${
+                      pickerFilter === c ? 'bg-black text-white' : 'bg-zinc-100 text-zinc-500'
+                    }`}
+                  >
+                    {CATEGORY_LABELS[c]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(70vh-110px)] p-4 pt-2">
               {availableItems.length === 0 ? (
                 <p className="text-sm text-zinc-300 text-center py-8">Все вещи уже добавлены</p>
+              ) : filteredPickerItems.length === 0 ? (
+                <p className="text-sm text-zinc-300 text-center py-8">Нет вещей в этой категории</p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {availableItems.map((item) => (
+                  {filteredPickerItems.map((item) => (
                     <button
                       key={item.id}
                       onClick={() => {
