@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Upload } from 'lucide-react'
 import { useStore } from '../store'
-import type { ClothingCategory, Outfit } from '../types'
-import { CATEGORY_LABELS } from '../types'
+import type { ClothingCategory, Outfit, Weather } from '../types'
+import { CATEGORY_LABELS, WEATHER_LABELS, ALL_WEATHER, SEASON_WEATHER } from '../types'
 import { ClothingCard } from '../components/ClothingCard'
 import { OutfitCard } from '../components/OutfitCard'
 import { OutfitEditor } from '../components/OutfitEditor'
@@ -14,17 +14,30 @@ type Tab = 'outfits' | 'items'
 
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as ClothingCategory[]
 
+/** Погода образа: явная, иначе выводим из сезона — чтобы фильтр по погоде не прятал старые образы. */
+function effectiveWeather(o: Outfit): Weather[] {
+  return o.weather?.length ? o.weather : SEASON_WEATHER[o.season]
+}
+
 export function WardrobePage() {
   const { wardrobe, shopping, outfits, addClothing, removeClothing, updateClothing, removeOutfit } = useStore()
   const [tab, setTab] = useState<Tab>('outfits')
   const [showAdd, setShowAdd] = useState(false)
   const [filter, setFilter] = useState<ClothingCategory | 'all'>('all')
+  const [outfitWeather, setOutfitWeather] = useState<Weather | 'all'>('all')
+  const [outfitItem, setOutfitItem] = useState<string | null>(null)
   // undefined = closed, null = new, Outfit = editing
   const [editingOutfit, setEditingOutfit] = useState<Outfit | null | undefined>(undefined)
 
   const filtered = filter === 'all'
     ? wardrobe
     : wardrobe.filter((i) => i.category === filter)
+
+  const filteredOutfits = outfits.filter((o) => {
+    const okWeather = outfitWeather === 'all' || effectiveWeather(o).includes(outfitWeather)
+    const okItem = !outfitItem || (o.wardrobeItemIds ?? []).includes(outfitItem)
+    return okWeather && okItem
+  })
 
   return (
     <div>
@@ -38,18 +51,31 @@ export function WardrobePage() {
         outfits.length === 0 ? (
           <EmptyOutfits onAdd={() => setEditingOutfit(null)} />
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {outfits.map((outfit) => (
-              <OutfitCard
-                key={outfit.id}
-                outfit={outfit}
-                wardrobeItems={wardrobe}
-                shoppingItems={shopping}
-                onRemove={removeOutfit}
-                onEdit={(o) => setEditingOutfit(o)}
-              />
-            ))}
-          </div>
+          <>
+            <OutfitFilterBar
+              weather={outfitWeather}
+              onWeather={setOutfitWeather}
+              itemFilter={outfitItem}
+              onItem={setOutfitItem}
+              wardrobe={wardrobe}
+            />
+            {filteredOutfits.length === 0 ? (
+              <p className="text-center text-sm text-zinc-300 mt-16">Нет образов под этот фильтр</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                {filteredOutfits.map((outfit) => (
+                  <OutfitCard
+                    key={outfit.id}
+                    outfit={outfit}
+                    wardrobeItems={wardrobe}
+                    shoppingItems={shopping}
+                    onRemove={removeOutfit}
+                    onEdit={(o) => setEditingOutfit(o)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )
       ) : (
         <>
@@ -152,6 +178,49 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
     >
       {label}
     </button>
+  )
+}
+
+function OutfitFilterBar({
+  weather,
+  onWeather,
+  itemFilter,
+  onItem,
+  wardrobe,
+}: {
+  weather: Weather | 'all'
+  onWeather: (w: Weather | 'all') => void
+  itemFilter: string | null
+  onItem: (id: string | null) => void
+  wardrobe: { id: string; name: string; imageUrl?: string }[]
+}) {
+  const withImage = wardrobe.filter((i) => i.imageUrl)
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+        <Chip label="Любая погода" active={weather === 'all'} onClick={() => onWeather('all')} />
+        {ALL_WEATHER.map((w) => (
+          <Chip key={w} label={WEATHER_LABELS[w]} active={weather === w} onClick={() => onWeather(w)} />
+        ))}
+      </div>
+      {withImage.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none items-center">
+          <span className="text-[11px] text-zinc-400 shrink-0 pr-1">По вещи:</span>
+          {withImage.map((i) => (
+            <button
+              key={i.id}
+              onClick={() => onItem(itemFilter === i.id ? null : i.id)}
+              title={i.name}
+              className={`shrink-0 w-9 h-9 rounded-lg overflow-hidden border-2 transition-colors ${
+                itemFilter === i.id ? 'border-black' : 'border-transparent opacity-70'
+              }`}
+            >
+              <img src={i.imageUrl} alt={i.name} className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

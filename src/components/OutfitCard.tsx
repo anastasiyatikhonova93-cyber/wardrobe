@@ -1,6 +1,6 @@
 import { Trash2 } from 'lucide-react'
 import type { ClothingItem, ShoppingItem, Outfit } from '../types'
-import { SEASON_LABELS, CATEGORY_SCALE } from '../types'
+import { SEASON_LABELS, WEATHER_LABELS, CATEGORY_SCALE } from '../types'
 import { TransparentImg } from './TransparentImg'
 
 interface Props {
@@ -99,9 +99,12 @@ export function OutfitCard({ outfit, wardrobeItems, shoppingItems, onRemove, onE
 
       <div className="p-3">
         <p className="text-sm font-medium leading-tight truncate">{outfit.name}</p>
-        <p className="text-xs text-zinc-400 mt-0.5">
-          {SEASON_LABELS[outfit.season]}
-          {outfit.occasion ? ` · ${outfit.occasion}` : ''}
+        <p className="text-xs text-zinc-400 mt-0.5 truncate">
+          {[
+            SEASON_LABELS[outfit.season],
+            ...(outfit.weather ?? []).map((w) => WEATHER_LABELS[w]),
+            ...(outfit.occasion ? [outfit.occasion] : []),
+          ].join(' · ')}
         </p>
       </div>
 
