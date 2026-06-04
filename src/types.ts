@@ -1,5 +1,7 @@
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter'
 
+export type Weather = 'hot' | 'warm' | 'cool' | 'cold'
+
 export type ClothingCategory =
   | 'tops'
   | 'bottoms'
@@ -59,6 +61,8 @@ export interface Outfit {
   wardrobeItemIds: string[]
   shoppingItemIds: string[]
   season: Season
+  /** Под какую погоду образ (фильтрация образов). */
+  weather?: Weather[]
   occasion?: string
   itemPositions: OutfitItemPosition[]
 }
@@ -94,6 +98,23 @@ export const SEASON_LABELS: Record<Season, string> = {
   summer: 'Лето',
   autumn: 'Осень',
   winter: 'Зима',
+}
+
+export const WEATHER_LABELS: Record<Weather, string> = {
+  hot: 'Жара',
+  warm: 'Тепло',
+  cool: 'Прохладно',
+  cold: 'Холод',
+}
+
+export const ALL_WEATHER: Weather[] = ['hot', 'warm', 'cool', 'cold']
+
+/** Грубое сопоставление сезона погоде — чтобы фильтровать по погоде образы, у которых она не задана явно. */
+export const SEASON_WEATHER: Record<Season, Weather[]> = {
+  summer: ['hot', 'warm'],
+  spring: ['warm', 'cool'],
+  autumn: ['cool', 'cold'],
+  winter: ['cold'],
 }
 
 export const CATEGORY_SCALE: Record<ClothingCategory, number> = {

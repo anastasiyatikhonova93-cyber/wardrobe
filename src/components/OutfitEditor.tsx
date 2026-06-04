@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Plus, Trash2, Check, ArrowLeft, Loader2 } from 'lucide-react'
 import { useStore } from '../store'
-import type { Outfit, OutfitItemPosition, Season, ClothingItem, ClothingCategory } from '../types'
-import { SEASON_LABELS, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
+import type { Outfit, OutfitItemPosition, Season, Weather, ClothingItem, ClothingCategory } from '../types'
+import { SEASON_LABELS, WEATHER_LABELS, ALL_WEATHER, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
 import { TransparentImg } from './TransparentImg'
 import { generateOutfitName } from '../ai'
 
@@ -36,6 +36,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
 
   const [name, setName] = useState(outfit?.name ?? '')
   const [season, setSeason] = useState<Season>(outfit?.season ?? 'spring')
+  const [weather, setWeather] = useState<Weather[]>(outfit?.weather ?? [])
   const [occasion, setOccasion] = useState(outfit?.occasion ?? '')
   const [itemIds, setItemIds] = useState<string[]>(outfit?.wardrobeItemIds ?? [])
   const [positions, setPositions] = useState<OutfitItemPosition[]>(() => {
@@ -149,6 +150,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
         wardrobeItemIds: itemIds,
         shoppingItemIds: [] as string[],
         season,
+        weather,
         itemPositions: positions,
       }
       if (occasion) data.occasion = occasion
@@ -224,6 +226,25 @@ export function OutfitEditor({ outfit, onClose }: Props) {
                   }`}
                 >
                   {SEASON_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Weather selector */}
+          <div className="mt-3">
+            <p className="text-xs text-zinc-400 mb-1.5">Погода</p>
+            <div className="flex gap-2">
+              {ALL_WEATHER.map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => setWeather((cur) => (cur.includes(w) ? cur.filter((x) => x !== w) : [...cur, w]))}
+                  className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+                    weather.includes(w) ? 'bg-black text-white' : 'bg-zinc-100 text-zinc-500'
+                  }`}
+                >
+                  {WEATHER_LABELS[w]}
                 </button>
               ))}
             </div>

@@ -6,7 +6,6 @@ import {
   deleteDoc,
   updateDoc,
   setDoc,
-  getDoc,
   onSnapshot,
   writeBatch,
   getDocs,
@@ -103,7 +102,7 @@ function subscribeToData(uid: string, set: (partial: Partial<WardrobeState> | ((
       checkLoaded()
     }, onErr),
     onSnapshot(userCol(uid, 'outfits'), (snap) => {
-      set({ outfits: snap.docs.map((d) => ({ wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], ...d.data(), id: d.id } as unknown as Outfit)) })
+      set({ outfits: snap.docs.map((d) => ({ wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], weather: [], ...d.data(), id: d.id } as unknown as Outfit)) })
       checkLoaded()
     }, onErr),
     onSnapshot(userCol(uid, 'features'), (snap) => {
