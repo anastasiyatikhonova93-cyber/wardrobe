@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom'
-import { Shirt, ShoppingBag, User } from 'lucide-react'
+import { LayoutGrid, Shirt, ShoppingBag, User } from 'lucide-react'
 
 const links = [
-  { to: '/', icon: Shirt, label: 'Гардероб' },
+  { to: '/', icon: LayoutGrid, label: 'Образы' },
+  { to: '/wardrobe', icon: Shirt, label: 'Гардероб' },
   { to: '/shopping', icon: ShoppingBag, label: 'Хочу купить' },
   { to: '/profile', icon: User, label: 'Профиль' },
 ]
@@ -15,6 +16,7 @@ export function NavBar() {
           <NavLink
             key={to}
             to={to}
+            end={to === '/'}
             className={({ isActive }) =>
               `flex flex-col items-center gap-0.5 text-xs transition-colors ${isActive ? 'text-black' : 'text-zinc-400'}`
             }

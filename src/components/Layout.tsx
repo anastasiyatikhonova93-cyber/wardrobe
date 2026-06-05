@@ -10,7 +10,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   function handleBack() {
     viewOwnWardrobe()
-    navigate('/')
+    navigate('/wardrobe')
   }
 
   return (

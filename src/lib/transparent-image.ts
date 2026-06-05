@@ -9,11 +9,15 @@ export function makeTransparent(src: string): Promise<string> {
     img.crossOrigin = 'anonymous'
     img.onload = () => {
       try {
+      // Обрабатываем уменьшенную копию: картинки показываются мелко (превью/холст),
+      // а пиксельные проходы и PNG-кодирование на полном разрешении — главный источник тормозов.
+      const MAX = 512
+      const ratio = Math.min(1, MAX / Math.max(img.width, img.height))
       const c = document.createElement('canvas')
-      c.width = img.width
-      c.height = img.height
+      c.width = Math.max(1, Math.round(img.width * ratio))
+      c.height = Math.max(1, Math.round(img.height * ratio))
       const ctx = c.getContext('2d')!
-      ctx.drawImage(img, 0, 0)
+      ctx.drawImage(img, 0, 0, c.width, c.height)
       const imageData = ctx.getImageData(0, 0, c.width, c.height)
       const d = imageData.data
       const w = c.width

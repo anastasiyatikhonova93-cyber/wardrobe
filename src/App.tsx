@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './lib/auth'
 import { useStore } from './store'
 import { Layout } from './components/Layout'
 import { AuthPage } from './pages/AuthPage'
+import { OutfitsPage } from './pages/OutfitsPage'
 import { WardrobePage } from './pages/WardrobePage'
 import { ShoppingPage } from './pages/ShoppingPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -66,7 +67,8 @@ function AppShell() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<WardrobePage />} />
+        <Route path="/" element={<OutfitsPage />} />
+        <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/shopping" element={<ShoppingPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/import" element={<ImportPage />} />
