@@ -17,7 +17,7 @@ export function PhotoPicker({ value, onChange }: Props) {
   const [uploading, setUploading] = useState(false)
   const [resolving, setResolving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  const { correcting, correct } = usePhotoCorrection(user?.uid)
+  const { correcting, error: correctionError, correct } = usePhotoCorrection(user?.uid)
 
   async function handleCorrection() {
     if (!value) return
@@ -66,6 +66,9 @@ export function PhotoPicker({ value, onChange }: Props) {
             {correcting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
             {correcting ? 'Обрабатываю...' : 'Коррекция фото: адаптировать под электронный гардероб'}
           </button>
+          {correctionError && (
+            <p className="mt-1 text-[11px] text-red-400 text-center">{correctionError}</p>
+          )}
         </>
       ) : resolving ? (
         <div className="w-full aspect-[4/3] rounded-xl bg-zinc-50 border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center gap-2">

@@ -20,7 +20,7 @@ export function PhotoEditor({ itemId, currentUrl, shopUrl, onUpdateImage, onClos
   const [resolving, setResolving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  const { correcting, correct } = usePhotoCorrection(user?.uid)
+  const { correcting, error: correctionError, correct } = usePhotoCorrection(user?.uid)
 
   async function handleCorrection() {
     const url = resolvedUrl ?? urlDraft.trim()
@@ -135,14 +135,19 @@ export function PhotoEditor({ itemId, currentUrl, shopUrl, onUpdateImage, onClos
       )}
 
       {displayUrl && !resolving && (
-        <button
-          onClick={handleCorrection}
-          disabled={correcting}
-          className="w-full flex items-center justify-center gap-1.5 text-[11px] px-3 py-2 rounded-full bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors disabled:opacity-50"
-        >
-          {correcting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
-          {correcting ? 'Обрабатываю...' : 'Коррекция фото: адаптировать под электронный гардероб'}
-        </button>
+        <>
+          <button
+            onClick={handleCorrection}
+            disabled={correcting}
+            className="w-full flex items-center justify-center gap-1.5 text-[11px] px-3 py-2 rounded-full bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+          >
+            {correcting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+            {correcting ? 'Обрабатываю...' : 'Коррекция фото: адаптировать под электронный гардероб'}
+          </button>
+          {correctionError && (
+            <p className="text-[11px] text-red-400 text-center">{correctionError}</p>
+          )}
+        </>
       )}
 
       <button
