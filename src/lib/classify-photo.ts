@@ -46,10 +46,21 @@ function validateSeasons(seasons: unknown): Season[] {
   return seasons.filter((s) => VALID_SEASONS.includes(s as Season)) as Season[]
 }
 
-async function classifyWithVision(file: File): Promise<ClassificationResult | null> {
-  try {
-    const base64 = await fileToBase64(file)
+const VISION_PROMPT = `Определи предмет одежды на фото.
 
+Ответь ТОЛЬКО JSON:
+{
+  "name": "краткое название на русском (например: Белая рубашка оверсайз)",
+  "category": "одна из: tops, bottoms, dresses, outerwear, knitwear, shoes, bags, accessories",
+  "color": "цвет на русском одним-двумя словами",
+  "seasons": ["подходящие сезоны из: spring, summer, autumn, winter"]
+}`
+
+async function requestVision(
+  imageUrl: string,
+  fallbackName: string,
+): Promise<ClassificationResult | null> {
+  try {
     const res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -66,22 +77,8 @@ async function classifyWithVision(file: File): Promise<ClassificationResult | nu
           {
             role: 'user',
             content: [
-              {
-                type: 'image_url',
-                image_url: { url: base64 },
-              },
-              {
-                type: 'text',
-                text: `Определи предмет одежды на фото.
-
-Ответь ТОЛЬКО JSON:
-{
-  "name": "краткое название на русском (например: Белая рубашка оверсайз)",
-  "category": "одна из: tops, bottoms, dresses, outerwear, knitwear, shoes, bags, accessories",
-  "color": "цвет на русском одним-двумя словами",
-  "seasons": ["подходящие сезоны из: spring, summer, autumn, winter"]
-}`,
-              },
+              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'text', text: VISION_PROMPT },
             ],
           },
         ],
@@ -100,7 +97,7 @@ async function classifyWithVision(file: File): Promise<ClassificationResult | nu
 
     const parsed = JSON.parse(jsonMatch[0])
     return {
-      name: parsed.name ?? cleanFilename(file.name),
+      name: parsed.name ?? fallbackName,
       category: validateCategory(parsed.category),
       color: parsed.color ?? '',
       seasons: validateSeasons(parsed.seasons),
@@ -109,6 +106,24 @@ async function classifyWithVision(file: File): Promise<ClassificationResult | nu
   } catch {
     return null
   }
+}
+
+async function classifyWithVision(file: File): Promise<ClassificationResult | null> {
+  try {
+    const base64 = await fileToBase64(file)
+    return await requestVision(base64, cleanFilename(file.name))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Распознаёт вещь по ссылке на изображение. Картинку забирает сам LLM на своей
+ * стороне, поэтому CORS браузера не мешает (в отличие от локальной обработки).
+ */
+export async function classifyImageUrl(url: string): Promise<ClassificationResult> {
+  const result = await requestVision(url, '')
+  return result ?? { name: '', category: 'tops', color: '', seasons: [], confidence: 'default' }
 }
 
 async function classifyWithFilename(filename: string): Promise<ClassificationResult> {

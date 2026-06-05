@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
 import type { ClothingItem, ClothingCategory, Season } from '../types'
 import { SeasonPicker } from './SeasonPicker'
 import { CategorySelect } from './CategorySelect'
 import { PhotoPicker } from './PhotoPicker'
+import { useAuth } from '../lib/auth'
+import { useAutoIngest } from '../hooks/useAutoIngest'
+import { preloadModel } from '../lib/background-removal'
 
 interface Props {
   onAdd: (item: Omit<ClothingItem, 'id'>) => void
@@ -10,6 +14,7 @@ interface Props {
 }
 
 export function AddClothingForm({ onAdd, onClose }: Props) {
+  const { user } = useAuth()
   const [name, setName] = useState('')
   const [category, setCategory] = useState<ClothingCategory>('tops')
   const [color, setColor] = useState('')
@@ -18,7 +23,25 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
   const [shopUrl, setShopUrl] = useState('')
 
   const [saving, setSaving] = useState(false)
-  const canSubmit = name.trim() && color.trim() && seasons.length > 0
+  const { processing, status, error, ingest } = useAutoIngest(user?.uid)
+  const canSubmit = name.trim() && color.trim() && seasons.length > 0 && !processing
+
+  // Прогреваем модель удаления фона заранее, чтобы первая обработка шла быстрее.
+  useEffect(() => {
+    preloadModel().catch(() => {})
+  }, [])
+
+  async function handleImageSelected(source: { file?: File; url?: string }) {
+    const result = await ingest(source)
+    if (!result) return
+    setImageUrl(result.imageUrl)
+    // Предзаполняем поля, не затирая то, что пользователь уже ввёл вручную.
+    const { fields } = result
+    if (fields.name) setName((prev) => prev || fields.name)
+    if (fields.color) setColor((prev) => prev || fields.color)
+    setCategory(fields.category)
+    if (fields.seasons.length) setSeasons((prev) => (prev.length ? prev : fields.seasons))
+  }
 
   async function handleSubmit() {
     if (!canSubmit || saving) return
@@ -40,7 +63,20 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
 
   return (
     <div className="space-y-4">
-      <PhotoPicker value={imageUrl} onChange={setImageUrl} />
+      <PhotoPicker
+        value={imageUrl}
+        onChange={setImageUrl}
+        onImageSelected={handleImageSelected}
+        processing={processing}
+        processingStatus={status}
+      />
+      {processing && (
+        <div className="flex items-center justify-center gap-2 text-xs text-zinc-500">
+          <Loader2 size={12} className="animate-spin" />
+          {status ?? 'Обрабатываю фото…'}
+        </div>
+      )}
+      {error && <p className="text-[11px] text-red-400 text-center">{error}</p>}
       <Input label="Название" value={name} onChange={setName} placeholder="Белая рубашка оверсайз" />
       <CategorySelect value={category} onChange={setCategory} />
       <Input label="Цвет" value={color} onChange={setColor} placeholder="белый" />
