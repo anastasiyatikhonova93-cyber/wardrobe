@@ -8,7 +8,7 @@ export function SharedWardrobesPage() {
 
   function openWardrobe(ownerUid: string, ownerName: string) {
     viewSharedWardrobe(ownerUid, ownerName)
-    navigate('/')
+    navigate('/wardrobe')
   }
 
   return (
@@ -22,7 +22,7 @@ export function SharedWardrobesPage() {
 
       {isSharedView && (
         <button
-          onClick={() => { viewOwnWardrobe(); navigate('/') }}
+          onClick={() => { viewOwnWardrobe(); navigate('/wardrobe') }}
           className="w-full mb-4 py-3 rounded-2xl bg-zinc-50 text-sm text-zinc-600 hover:bg-zinc-100 transition-colors"
         >
           Вернуться к своему гардеробу

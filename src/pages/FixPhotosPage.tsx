@@ -208,7 +208,7 @@ export function FixPhotosPage() {
           )}
 
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/wardrobe')}
             className="w-full py-3 rounded-full bg-black text-white text-sm font-medium"
           >
             Перейти в гардероб

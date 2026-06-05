@@ -135,7 +135,7 @@ export function ImportPage() {
       }))
 
       await addClothingBatch(clothing)
-      navigate('/')
+      navigate('/wardrobe')
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Не удалось сохранить')
     } finally {
@@ -150,7 +150,7 @@ export function ImportPage() {
     <div>
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/wardrobe')}
           className="rounded-full p-2 hover:bg-zinc-100 transition-colors"
         >
           <ArrowLeft size={18} />
