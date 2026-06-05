@@ -6,9 +6,11 @@ import { WEATHER_LABELS, ALL_WEATHER, SEASON_WEATHER } from '../types'
 import { OutfitCard } from '../components/OutfitCard'
 import { OutfitEditor } from '../components/OutfitEditor'
 
-/** Погода образа: явная, иначе выводим из сезона — чтобы фильтр по погоде не прятал старые образы. */
+/** Погода образа: явная, иначе выводим из сезона — чтобы фильтр по погоде не прятал старые образы.
+ *  `?? []` защищает от образов без валидного season (иначе SEASON_WEATHER[o.season] === undefined → краш на .includes). */
 function effectiveWeather(o: Outfit): Weather[] {
-  return o.weather?.length ? o.weather : SEASON_WEATHER[o.season]
+  if (o.weather?.length) return o.weather
+  return SEASON_WEATHER[o.season] ?? []
 }
 
 export function OutfitsPage() {
