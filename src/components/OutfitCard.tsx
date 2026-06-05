@@ -101,10 +101,10 @@ export function OutfitCard({ outfit, wardrobeItems, shoppingItems, onRemove, onE
         <p className="text-sm font-medium leading-tight truncate">{outfit.name}</p>
         <p className="text-xs text-zinc-400 mt-0.5 truncate">
           {[
-            SEASON_LABELS[outfit.season],
+            outfit.season ? SEASON_LABELS[outfit.season] : null,
             ...(outfit.weather ?? []).map((w) => WEATHER_LABELS[w]),
             ...(outfit.occasion ? [outfit.occasion] : []),
-          ].join(' · ')}
+          ].filter(Boolean).join(' · ')}
         </p>
       </div>
 
