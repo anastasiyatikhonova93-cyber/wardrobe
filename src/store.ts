@@ -17,7 +17,8 @@ import {
 } from 'firebase/firestore'
 import { db } from './lib/firebase'
 import { auth } from './lib/firebase'
-import type { ClothingItem, ShoppingItem, Outfit, Profile, BodyFeature, Collaborator, SharedWardrobe } from './types'
+import type { ClothingItem, ShoppingItem, Outfit, Profile, BodyFeature, Collaborator, SharedWardrobe, Category } from './types'
+import { DEFAULT_OUTFIT_CATEGORIES } from './types'
 
 interface WardrobeState {
   wardrobe: ClothingItem[]
@@ -55,6 +56,10 @@ interface WardrobeState {
   updateProfile: (patch: Partial<Profile>) => Promise<void>
   addBodyFeature: (f: Omit<BodyFeature, 'id'>) => Promise<void>
   removeBodyFeature: (id: string) => Promise<void>
+
+  addOutfitCategory: (name: string) => Promise<void>
+  renameOutfitCategory: (id: string, name: string) => Promise<void>
+  removeOutfitCategory: (id: string) => Promise<void>
 
   createInvite: () => Promise<string>
   acceptInvite: (token: string) => Promise<{ ownerUid: string; ownerName: string }>
@@ -102,7 +107,12 @@ function subscribeToData(uid: string, set: (partial: Partial<WardrobeState> | ((
       checkLoaded()
     }, onErr),
     onSnapshot(userCol(uid, 'outfits'), (snap) => {
-      set({ outfits: snap.docs.map((d) => ({ wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], weather: [], ...d.data(), id: d.id } as unknown as Outfit)) })
+      set({ outfits: snap.docs.map((d) => {
+        const data = d.data()
+        // Миграция: старое поле `weather` читается как категории, если новое не задано.
+        const categories = (data.categories ?? data.weather ?? []) as string[]
+        return { wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], ...data, categories, id: d.id } as unknown as Outfit
+      }) })
       checkLoaded()
     }, onErr),
     onSnapshot(userCol(uid, 'features'), (snap) => {
@@ -120,6 +130,7 @@ function subscribeToData(uid: string, set: (partial: Partial<WardrobeState> | ((
             weight: d.weight,
             bodyType: d.bodyType,
             preferredStyles: d.preferredStyles ?? [],
+            outfitCategories: d.outfitCategories,
           },
         }))
       }
@@ -343,6 +354,43 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   removeBodyFeature: async (id) => {
     if (!viewingUid || get().isSharedView) return
     await deleteDoc(userDoc(viewingUid, 'features', id))
+  },
+
+  addOutfitCategory: async (name) => {
+    if (!viewingUid || get().isSharedView) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const current = get().profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+    const category: Category = { id: crypto.randomUUID(), name: trimmed }
+    await setDoc(profileDoc(viewingUid), { outfitCategories: [...current, category] }, { merge: true })
+  },
+
+  renameOutfitCategory: async (id, name) => {
+    if (!viewingUid || get().isSharedView) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const current = get().profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+    const next = current.map((c) => (c.id === id ? { ...c, name: trimmed } : c))
+    await setDoc(profileDoc(viewingUid), { outfitCategories: next }, { merge: true })
+  },
+
+  removeOutfitCategory: async (id) => {
+    if (!viewingUid || get().isSharedView) return
+    const current = get().profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+    const next = current.filter((c) => c.id !== id)
+    await setDoc(profileDoc(viewingUid), { outfitCategories: next }, { merge: true })
+
+    // Зачистка ссылок на удалённую категорию у образов.
+    const affected = get().outfits.filter((o) => (o.categories ?? []).includes(id))
+    if (affected.length) {
+      const batch = writeBatch(db)
+      for (const o of affected) {
+        batch.update(userDoc(viewingUid, 'outfits', o.id), {
+          categories: (o.categories ?? []).filter((c) => c !== id),
+        })
+      }
+      await batch.commit()
+    }
   },
 
   createInvite: async () => {

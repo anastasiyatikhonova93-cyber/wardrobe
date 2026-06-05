@@ -1,6 +1,10 @@
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter'
 
-export type Weather = 'hot' | 'warm' | 'cool' | 'cold'
+/** Пользовательская категория образа (погода, повод и т.п.) — задаётся в профиле. */
+export interface Category {
+  id: string
+  name: string
+}
 
 export type ClothingCategory =
   | 'tops'
@@ -61,8 +65,8 @@ export interface Outfit {
   wardrobeItemIds: string[]
   shoppingItemIds: string[]
   season: Season
-  /** Под какую погоду образ (фильтрация образов). */
-  weather?: Weather[]
+  /** Категории образа для фильтрации (id из Profile.outfitCategories). */
+  categories?: string[]
   occasion?: string
   itemPositions: OutfitItemPosition[]
 }
@@ -80,6 +84,8 @@ export interface Profile {
   bodyType?: BodyType
   features: BodyFeature[]
   preferredStyles: string[]
+  /** Пользовательские категории образов. Если не заданы — используются DEFAULT_OUTFIT_CATEGORIES. */
+  outfitCategories?: Category[]
 }
 
 export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
@@ -100,22 +106,15 @@ export const SEASON_LABELS: Record<Season, string> = {
   winter: 'Зима',
 }
 
-export const WEATHER_LABELS: Record<Weather, string> = {
-  hot: 'Жара',
-  warm: 'Тепло',
-  cool: 'Прохладно',
-  cold: 'Холод',
-}
-
-export const ALL_WEATHER: Weather[] = ['hot', 'warm', 'cool', 'cold']
-
-/** Грубое сопоставление сезона погоде — чтобы фильтровать по погоде образы, у которых она не задана явно. */
-export const SEASON_WEATHER: Record<Season, Weather[]> = {
-  summer: ['hot', 'warm'],
-  spring: ['warm', 'cool'],
-  autumn: ['cool', 'cold'],
-  winter: ['cold'],
-}
+/** Категории образов по умолчанию. id погодных совпадают со старым полем `weather`,
+ *  чтобы у ранее созданных образов сохранились метки после миграции. */
+export const DEFAULT_OUTFIT_CATEGORIES: Category[] = [
+  { id: 'hot', name: 'Жара' },
+  { id: 'warm', name: 'Тепло' },
+  { id: 'cool', name: 'Прохладно' },
+  { id: 'cold', name: 'Холод' },
+  { id: 'evening', name: 'Вечернее' },
+]
 
 export const CATEGORY_SCALE: Record<ClothingCategory, number> = {
   tops: 1.0,

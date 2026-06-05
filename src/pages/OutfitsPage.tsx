@@ -1,29 +1,23 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useStore } from '../store'
-import type { Outfit, Weather } from '../types'
-import { WEATHER_LABELS, ALL_WEATHER, SEASON_WEATHER } from '../types'
+import type { Outfit, Category } from '../types'
+import { DEFAULT_OUTFIT_CATEGORIES } from '../types'
 import { OutfitCard } from '../components/OutfitCard'
 import { OutfitEditor } from '../components/OutfitEditor'
 
-/** Погода образа: явная, иначе выводим из сезона — чтобы фильтр по погоде не прятал старые образы.
- *  `?? []` защищает от образов без валидного season (иначе SEASON_WEATHER[o.season] === undefined → краш на .includes). */
-function effectiveWeather(o: Outfit): Weather[] {
-  if (o.weather?.length) return o.weather
-  return SEASON_WEATHER[o.season] ?? []
-}
-
 export function OutfitsPage() {
-  const { wardrobe, shopping, outfits, removeOutfit } = useStore()
-  const [outfitWeather, setOutfitWeather] = useState<Weather | 'all'>('all')
+  const { wardrobe, shopping, outfits, removeOutfit, profile } = useStore()
+  const categories = profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+  const [outfitCategory, setOutfitCategory] = useState<string | 'all'>('all')
   const [outfitItem, setOutfitItem] = useState<string | null>(null)
   // undefined = закрыто, null = новый, Outfit = редактирование
   const [editingOutfit, setEditingOutfit] = useState<Outfit | null | undefined>(undefined)
 
   const filteredOutfits = outfits.filter((o) => {
-    const okWeather = outfitWeather === 'all' || effectiveWeather(o).includes(outfitWeather)
+    const okCategory = outfitCategory === 'all' || (o.categories ?? []).includes(outfitCategory)
     const okItem = !outfitItem || (o.wardrobeItemIds ?? []).includes(outfitItem)
-    return okWeather && okItem
+    return okCategory && okItem
   })
 
   return (
@@ -43,8 +37,9 @@ export function OutfitsPage() {
       ) : (
         <>
           <OutfitFilterBar
-            weather={outfitWeather}
-            onWeather={setOutfitWeather}
+            categories={categories}
+            selected={outfitCategory}
+            onSelect={setOutfitCategory}
             itemFilter={outfitItem}
             onItem={setOutfitItem}
             wardrobe={wardrobe}
@@ -89,14 +84,16 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 }
 
 function OutfitFilterBar({
-  weather,
-  onWeather,
+  categories,
+  selected,
+  onSelect,
   itemFilter,
   onItem,
   wardrobe,
 }: {
-  weather: Weather | 'all'
-  onWeather: (w: Weather | 'all') => void
+  categories: Category[]
+  selected: string | 'all'
+  onSelect: (id: string | 'all') => void
   itemFilter: string | null
   onItem: (id: string | null) => void
   wardrobe: { id: string; name: string; imageUrl?: string }[]
@@ -105,9 +102,9 @@ function OutfitFilterBar({
   return (
     <div className="space-y-2">
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
-        <Chip label="Любая погода" active={weather === 'all'} onClick={() => onWeather('all')} />
-        {ALL_WEATHER.map((w) => (
-          <Chip key={w} label={WEATHER_LABELS[w]} active={weather === w} onClick={() => onWeather(w)} />
+        <Chip label="Все" active={selected === 'all'} onClick={() => onSelect('all')} />
+        {categories.map((c) => (
+          <Chip key={c.id} label={c.name} active={selected === c.id} onClick={() => onSelect(c.id)} />
         ))}
       </div>
       {withImage.length > 0 && (

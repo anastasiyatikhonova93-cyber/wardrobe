@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, LogOut, Link2, Copy, Check, Trash2, Users } from 'lucide-react'
 import { useStore } from '../store'
 import { useAuth } from '../lib/auth'
-import type { BodyType, FeaturePreference } from '../types'
-import { BODY_TYPE_LABELS } from '../types'
+import type { BodyType, FeaturePreference, Category } from '../types'
+import { BODY_TYPE_LABELS, DEFAULT_OUTFIT_CATEGORIES } from '../types'
 import { BodyFeatureRow } from '../components/BodyFeatureRow'
 import { Modal } from '../components/Modal'
 
@@ -32,6 +32,7 @@ export function ProfilePage() {
         readOnly={isSharedView}
       />
       <StylesSection readOnly={isSharedView} />
+      {!isSharedView && <CategoriesSection />}
       {!isSharedView && <SharedWardrobesLink />}
       {!isSharedView && (
         <Modal open={showFeatureForm} onClose={() => setShowFeatureForm(false)} title="Новая особенность">
@@ -276,6 +277,82 @@ function StylesSection({ readOnly }: { readOnly?: boolean }) {
         <p className="text-xs text-zinc-300">Не указаны</p>
       )}
     </section>
+  )
+}
+
+function CategoriesSection() {
+  const { profile, addOutfitCategory, renameOutfitCategory, removeOutfitCategory } = useStore()
+  const categories = profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+  const [input, setInput] = useState('')
+
+  function add() {
+    if (!input.trim()) return
+    addOutfitCategory(input)
+    setInput('')
+  }
+
+  return (
+    <section className="mb-6">
+      <h2 className="text-sm font-medium text-zinc-400 mb-3">Категории образов</h2>
+      <p className="text-xs text-zinc-300 mb-3">Используются для фильтрации образов. Например: Жара, Вечернее, Спорт.</p>
+
+      <div className="flex gap-2 mb-3">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="Новая категория..."
+          className="flex-1 px-4 py-2 rounded-xl bg-zinc-50 text-sm border border-zinc-100"
+        />
+        <button onClick={add} className="rounded-full bg-black text-white px-4 py-2 text-sm">+</button>
+      </div>
+
+      <div className="space-y-2">
+        {categories.map((c) => (
+          <CategoryRow
+            key={c.id}
+            category={c}
+            onRename={(name) => renameOutfitCategory(c.id, name)}
+            onRemove={() => removeOutfitCategory(c.id)}
+          />
+        ))}
+        {categories.length === 0 && (
+          <p className="text-xs text-zinc-300">Нет категорий — добавьте первую выше</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function CategoryRow({ category, onRename, onRemove }: { category: Category; onRename: (name: string) => void; onRemove: () => void }) {
+  const [name, setName] = useState(category.name)
+
+  function commit() {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setName(category.name) // пустое имя — откатываем
+      return
+    }
+    if (trimmed !== category.name) onRename(trimmed)
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        className="flex-1 px-4 py-2 rounded-xl bg-zinc-50 text-sm border border-zinc-100 focus:outline-none focus:border-zinc-300"
+      />
+      <button
+        onClick={onRemove}
+        className="rounded-full p-2 hover:bg-zinc-100 transition-colors shrink-0"
+        title="Удалить категорию"
+      >
+        <Trash2 size={16} className="text-zinc-400" />
+      </button>
+    </div>
   )
 }
 

@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Plus, Trash2, Check, ArrowLeft, Loader2 } from 'lucide-react'
 import { useStore } from '../store'
-import type { Outfit, OutfitItemPosition, Season, Weather, ClothingItem, ClothingCategory } from '../types'
-import { SEASON_LABELS, WEATHER_LABELS, ALL_WEATHER, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
+import type { Outfit, OutfitItemPosition, Season, ClothingItem, ClothingCategory } from '../types'
+import { SEASON_LABELS, DEFAULT_OUTFIT_CATEGORIES, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
 import { TransparentImg } from './TransparentImg'
 import { generateOutfitName } from '../ai'
 
@@ -32,11 +32,12 @@ function autoLayout(itemIds: string[], items: ClothingItem[]): OutfitItemPositio
 }
 
 export function OutfitEditor({ outfit, onClose }: Props) {
-  const { wardrobe, addOutfit, updateOutfit, removeOutfit } = useStore()
+  const { wardrobe, addOutfit, updateOutfit, removeOutfit, profile } = useStore()
+  const allCategories = profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
 
   const [name, setName] = useState(outfit?.name ?? '')
   const [season, setSeason] = useState<Season>(outfit?.season ?? 'spring')
-  const [weather, setWeather] = useState<Weather[]>(outfit?.weather ?? [])
+  const [categories, setCategories] = useState<string[]>(outfit?.categories ?? [])
   const [occasion, setOccasion] = useState(outfit?.occasion ?? '')
   const [itemIds, setItemIds] = useState<string[]>(outfit?.wardrobeItemIds ?? [])
   const [positions, setPositions] = useState<OutfitItemPosition[]>(() => {
@@ -150,7 +151,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
         wardrobeItemIds: itemIds,
         shoppingItemIds: [] as string[],
         season,
-        weather,
+        categories,
         itemPositions: positions,
       }
       if (occasion) data.occasion = occasion
@@ -231,23 +232,27 @@ export function OutfitEditor({ outfit, onClose }: Props) {
             </div>
           </div>
 
-          {/* Weather selector */}
+          {/* Categories selector */}
           <div className="mt-3">
-            <p className="text-xs text-zinc-400 mb-1.5">Погода</p>
-            <div className="flex gap-2">
-              {ALL_WEATHER.map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => setWeather((cur) => (cur.includes(w) ? cur.filter((x) => x !== w) : [...cur, w]))}
-                  className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
-                    weather.includes(w) ? 'bg-black text-white' : 'bg-zinc-100 text-zinc-500'
-                  }`}
-                >
-                  {WEATHER_LABELS[w]}
-                </button>
-              ))}
-            </div>
+            <p className="text-xs text-zinc-400 mb-1.5">Категории</p>
+            {allCategories.length === 0 ? (
+              <p className="text-xs text-zinc-300">Добавьте категории в профиле</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {allCategories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategories((cur) => (cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]))}
+                    className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+                      categories.includes(c.id) ? 'bg-black text-white' : 'bg-zinc-100 text-zinc-500'
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Occasion */}
