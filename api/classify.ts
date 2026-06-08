@@ -33,29 +33,23 @@ export default async function handler(req: IncomingMessage, res: Res) {
       return res.status(400).json({ error: 'image or imageUrl is required' })
     }
 
-    const geminiRes = await fetch(GEMINI_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      signal: AbortSignal.timeout(30000),
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: PROMPT },
-              { inline_data: { mime_type: inline.mimeType, data: inline.data } },
-            ],
-          },
-        ],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-      }),
+    const reqBody = JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: PROMPT },
+            { inline_data: { mime_type: inline.mimeType, data: inline.data } },
+          ],
+        },
+      ],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
     })
 
-    if (!geminiRes.ok) {
-      const detail = await geminiRes.text().catch(() => '')
-      return res.status(502).json({ error: `gemini ${geminiRes.status}`, detail: detail.slice(0, 300) })
+    const gemini = await callGeminiWithRetry(reqBody, apiKey)
+    if (!gemini.ok) {
+      return res.status(502).json({ error: `gemini ${gemini.status}`, detail: gemini.detail.slice(0, 300) })
     }
-
-    const json = await geminiRes.json()
+    const json = gemini.json
     const text = (json as any)?.candidates?.[0]?.content?.parts
       ?.map((p: any) => p?.text)
       .filter(Boolean)
@@ -69,6 +63,32 @@ export default async function handler(req: IncomingMessage, res: Res) {
     const message = err instanceof Error ? err.message : 'unknown error'
     return res.status(500).json({ error: 'failed to classify', detail: message })
   }
+}
+
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// Бесплатный тариф Gemini периодически отвечает 503 (перегрузка) — повторяем.
+async function callGeminiWithRetry(
+  reqBody: string,
+  apiKey: string,
+): Promise<{ ok: true; json: unknown } | { ok: false; status: number; detail: string }> {
+  let last = { status: 0, detail: '' }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      signal: AbortSignal.timeout(30000),
+      body: reqBody,
+    })
+    if (res.ok) return { ok: true, json: await res.json() }
+    last = { status: res.status, detail: await res.text().catch(() => '') }
+    if (res.status === 429 || res.status === 500 || res.status === 503) {
+      await delay(600 * (attempt + 1))
+      continue
+    }
+    break
+  }
+  return { ok: false, ...last }
 }
 
 async function resolveInlineImage(
