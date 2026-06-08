@@ -13,12 +13,43 @@ export interface ClassificationResult {
   confidence: 'vision' | 'filename' | 'default'
 }
 
-function fileToBase64(file: File): Promise<string> {
+/**
+ * Уменьшает фото до компактного JPEG перед отправкой на распознавание.
+ * Полное разрешение для классификации не нужно, а у serverless-функции Vercel
+ * лимит тела запроса ~4.5 МБ — оригинал с телефона его легко превышает.
+ */
+function fileToCompactDataUrl(file: File, maxDim = 1024, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error('Failed to read file'))
-    reader.readAsDataURL(file)
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        let width = img.naturalWidth || img.width
+        let height = img.naturalHeight || img.height
+        if (width > maxDim || height > maxDim) {
+          const r = Math.min(maxDim / width, maxDim / height)
+          width = Math.round(width * r)
+          height = Math.round(height * r)
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')!
+        ctx.fillStyle = '#ffffff' // подложка на случай прозрачности
+        ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('encode failed'))
+      } finally {
+        URL.revokeObjectURL(url)
+      }
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Failed to read file'))
+    }
+    img.src = url
   })
 }
 
@@ -180,7 +211,7 @@ export async function classifyPhoto(
 ): Promise<ClassificationResult> {
   let base64: string | null = null
   try {
-    base64 = await fileToBase64(file)
+    base64 = await fileToCompactDataUrl(file)
   } catch {
     base64 = null
   }
