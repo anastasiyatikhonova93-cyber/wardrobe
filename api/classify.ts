@@ -79,7 +79,14 @@ async function resolveInlineImage(
   }
   if (body && typeof body.imageUrl === 'string' && body.imageUrl) {
     // Картинку забираем на сервере — CORS браузера тут не мешает.
-    const resp = await fetch(body.imageUrl, { signal: AbortSignal.timeout(12000) })
+    // UA нужен, иначе часть сайтов (например Wikimedia) отвечает 403.
+    const resp = await fetch(body.imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        Accept: 'image/*',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
     if (!resp.ok) return null
     const mimeType = resp.headers.get('content-type') ?? 'image/jpeg'
     const buf = Buffer.from(await resp.arrayBuffer())
