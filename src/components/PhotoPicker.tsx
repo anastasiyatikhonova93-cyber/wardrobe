@@ -102,7 +102,7 @@ function Preview({ src, processing, status, onClear }: {
   }
   return (
     <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-zinc-100">
-      <img src={src} alt="" className="w-full h-full object-cover" onError={() => setBroken(true)} />
+      <img src={src} alt="" className="w-full h-full object-contain" onError={() => setBroken(true)} />
       {!processing && (
         <button
           onClick={onClear}
