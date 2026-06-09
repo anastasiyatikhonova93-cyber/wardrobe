@@ -9,6 +9,59 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl)
+  return res.blob()
+}
+
+// Уменьшаем фото перед отправкой на сервер: у Vercel лимит тела ~4.5 МБ,
+// а оригинал с телефона его превышает. 1280px достаточно для AI-обработки.
+async function blobToCompactDataUrl(source: Blob, maxDim = 1280, quality = 0.9): Promise<string> {
+  const url = URL.createObjectURL(source)
+  try {
+    const img = await loadImage(url)
+    let width = img.naturalWidth || img.width
+    let height = img.naturalHeight || img.height
+    if (width > maxDim || height > maxDim) {
+      const r = Math.min(maxDim / width, maxDim / height)
+      width = Math.round(width * r)
+      height = Math.round(height * r)
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+    ctx.drawImage(img, 0, 0, width, height)
+    return canvas.toDataURL('image/jpeg', quality)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/**
+ * AI-обработка фото через serverless /api/clean-image (Gemini 2.5 Flash Image):
+ * убирает лишнее, ставит вещь на чистый фон и делает студийную цветокоррекцию.
+ * Требует включённого биллинга Google — иначе вернёт ошибку (квота), и вызывающий
+ * код откатится на локальную обработку.
+ */
+export async function cleanupPhotoAI(source: Blob): Promise<Blob> {
+  const image = await blobToCompactDataUrl(source)
+  const res = await fetch('/api/clean-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image }),
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    throw new Error(detail?.error ?? `AI-обработка недоступна (${res.status})`)
+  }
+  const data = await res.json()
+  if (typeof data?.image !== 'string') throw new Error('Сервис не вернул изображение')
+  return dataUrlToBlob(data.image)
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(

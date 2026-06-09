@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cleanupPhoto } from '../lib/photo-cleanup'
+import { cleanupPhoto, cleanupPhotoAI } from '../lib/photo-cleanup'
 import { uploadPhoto } from '../lib/storage'
 import { classifyPhoto, classifyImageUrl } from '../lib/classify-photo'
 import type { ClassificationResult } from '../lib/classify-photo'
@@ -45,9 +45,16 @@ export function useAutoIngest(uid: string | undefined) {
       // 1) Коррекция фото (только если есть локальные байты картинки).
       let imageUrl = source.url ?? ''
       if (file) {
-        setStatus('Убираю фон и правлю цвет…')
+        setStatus('Обрабатываю фото…')
         try {
-          const processed = await cleanupPhoto(file)
+          let processed: Blob
+          try {
+            // Сначала AI-ретушь (Gemini). Если биллинг выключен или сбой —
+            // откатываемся на локальное вырезание фона + цветокоррекцию.
+            processed = await cleanupPhotoAI(file)
+          } catch {
+            processed = await cleanupPhoto(file)
+          }
           imageUrl = await uploadPhoto(processed, uid)
         } catch {
           // Не удалось обработать — оставляем как есть, но не валим весь процесс.
