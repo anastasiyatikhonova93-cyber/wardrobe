@@ -32,12 +32,21 @@ function autoLayout(itemIds: string[], items: ClothingItem[]): OutfitItemPositio
 }
 
 export function OutfitEditor({ outfit, onClose }: Props) {
-  const { wardrobe, addOutfit, updateOutfit, removeOutfit, profile } = useStore()
+  const { wardrobe, addOutfit, updateOutfit, removeOutfit, profile, addOutfitCategory } = useStore()
   const allCategories = profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
 
   const [name, setName] = useState(outfit?.name ?? '')
   const [season, setSeason] = useState<Season>(outfit?.season ?? 'spring')
   const [categories, setCategories] = useState<string[]>(outfit?.categories ?? [])
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [newCategory, setNewCategory] = useState('')
+
+  async function commitNewCategory() {
+    const created = await addOutfitCategory(newCategory)
+    if (created) setCategories((cur) => [...cur, created.id]) // сразу отмечаем у образа
+    setNewCategory('')
+    setAddingCategory(false)
+  }
   const [occasion, setOccasion] = useState(outfit?.occasion ?? '')
   const [itemIds, setItemIds] = useState<string[]>(outfit?.wardrobeItemIds ?? [])
   const [positions, setPositions] = useState<OutfitItemPosition[]>(() => {
@@ -235,22 +244,52 @@ export function OutfitEditor({ outfit, onClose }: Props) {
           {/* Categories selector */}
           <div className="mt-3">
             <p className="text-xs text-zinc-400 mb-1.5">Категории</p>
-            {allCategories.length === 0 ? (
-              <p className="text-xs text-zinc-300">Добавьте категории в профиле</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {allCategories.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setCategories((cur) => (cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]))}
-                    className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
-                      categories.includes(c.id) ? 'bg-black text-white' : 'bg-zinc-100 text-zinc-500'
-                    }`}
-                  >
-                    {c.name}
-                  </button>
-                ))}
+            <div className="flex flex-wrap gap-2">
+              {allCategories.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCategories((cur) => (cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]))}
+                  className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+                    categories.includes(c.id) ? 'bg-black text-white' : 'bg-zinc-100 text-zinc-500'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+              {!addingCategory && (
+                <button
+                  type="button"
+                  onClick={() => setAddingCategory(true)}
+                  className="px-3 py-1.5 rounded-full text-xs bg-zinc-100 text-zinc-500 flex items-center gap-1 transition-colors hover:bg-zinc-200"
+                  title="Добавить категорию"
+                >
+                  <Plus size={12} />
+                </button>
+              )}
+            </div>
+            {addingCategory && (
+              <div className="flex gap-2 mt-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitNewCategory() }
+                    if (e.key === 'Escape') { setNewCategory(''); setAddingCategory(false) }
+                  }}
+                  placeholder="Новая категория"
+                  className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400"
+                />
+                <button
+                  type="button"
+                  onClick={commitNewCategory}
+                  disabled={!newCategory.trim()}
+                  className="bg-black text-white rounded-full p-2 transition-transform active:scale-95 disabled:opacity-30"
+                >
+                  <Check size={16} />
+                </button>
               </div>
             )}
           </div>

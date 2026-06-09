@@ -57,7 +57,7 @@ interface WardrobeState {
   addBodyFeature: (f: Omit<BodyFeature, 'id'>) => Promise<void>
   removeBodyFeature: (id: string) => Promise<void>
 
-  addOutfitCategory: (name: string) => Promise<void>
+  addOutfitCategory: (name: string) => Promise<Category | undefined>
   renameOutfitCategory: (id: string, name: string) => Promise<void>
   removeOutfitCategory: (id: string) => Promise<void>
 
@@ -363,6 +363,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
     const current = get().profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
     const category: Category = { id: crypto.randomUUID(), name: trimmed }
     await setDoc(profileDoc(viewingUid), { outfitCategories: [...current, category] }, { merge: true })
+    return category
   },
 
   renameOutfitCategory: async (id, name) => {
