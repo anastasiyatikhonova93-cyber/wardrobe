@@ -23,8 +23,10 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
   const [shopUrl, setShopUrl] = useState('')
 
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const { processing, status, error, ingest } = useAutoIngest(user?.uid)
-  const canSubmit = name.trim() && color.trim() && seasons.length > 0 && !processing
+  // Достаточно названия — цвет и сезоны можно дозаполнить, не блокируем добавление.
+  const canSubmit = name.trim() && !processing
 
   // Прогреваем модель удаления фона заранее, чтобы первая обработка шла быстрее.
   useEffect(() => {
@@ -46,6 +48,7 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
   async function handleSubmit() {
     if (!canSubmit || saving) return
     setSaving(true)
+    setSaveError(null)
     try {
       await onAdd({
         name: name.trim(),
@@ -56,7 +59,8 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
         shopUrl: shopUrl.trim() || undefined,
       })
       onClose()
-    } catch {
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Не удалось сохранить вещь')
       setSaving(false)
     }
   }
@@ -82,12 +86,15 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
       <Input label="Цвет" value={color} onChange={setColor} placeholder="белый" />
       <SeasonPicker selected={seasons} onChange={setSeasons} />
       <Input label="Ссылка на магазин" value={shopUrl} onChange={setShopUrl} placeholder="https://..." />
+      {saveError && (
+        <p className="text-[11px] text-red-500 text-center">{saveError}</p>
+      )}
       <button
         onClick={handleSubmit}
         disabled={!canSubmit || saving}
         className="w-full py-3 rounded-full bg-black text-white text-sm font-medium disabled:opacity-30 transition-opacity"
       >
-        Добавить
+        {saving ? 'Сохраняю…' : 'Добавить'}
       </button>
     </div>
   )
