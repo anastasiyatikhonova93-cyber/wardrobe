@@ -63,7 +63,7 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
     add.catch(() => {})
     // Не виснем вечно на подтверждении сервера: вещь и так показывается локально
     // сразу, поэтому через несколько секунд закрываем форму оптимистично.
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 6000))
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000))
 
     try {
       await Promise.race([add, timeout])
