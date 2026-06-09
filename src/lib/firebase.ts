@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import { initializeFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -14,4 +14,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
-export const db = getFirestore(app)
+// ignoreUndefinedProperties: пустые поля (shopUrl, imageUrl и т.п.) уходят как
+// undefined — без этой настройки addDoc/updateDoc падают на них с ошибкой.
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true })
