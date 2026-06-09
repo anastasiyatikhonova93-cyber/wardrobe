@@ -41,17 +41,23 @@ export function useAutoIngest(uid: string | undefined) {
     setError(null)
     try {
       const file = source.file ?? (source.url ? await urlToFile(source.url) : null)
+      setStatus('Обработка фото…')
 
-      // 1) Коррекция фото (только если есть локальные байты картинки).
+      // 1) Сначала распознаём вещь — категория нужна, чтобы выбрать правильный
+      //    промт обработки (обувь/сумка/украшение/одежда обрабатываются по-разному).
+      const fields = file
+        ? await classifyPhoto(file, file.name)
+        : await classifyImageUrl(source.url ?? '')
+
+      // 2) Коррекция фото с учётом типа вещи (только если есть локальные байты).
       let imageUrl = source.url ?? ''
       if (file) {
-        setStatus('Обработка фото…')
         try {
           let processed: Blob
           try {
             // AI-ретушь (Gemini, белый фон) + вырезание в прозрачный. Если AI
             // недоступен (нет биллинга/сбой) — локальное вырезание + цветокоррекция.
-            processed = await cleanupBest(file)
+            processed = await cleanupBest(file, fields.category)
           } catch {
             processed = await cleanupPhoto(file)
           }
@@ -61,12 +67,6 @@ export function useAutoIngest(uid: string | undefined) {
           imageUrl = source.url ?? imageUrl
         }
       }
-
-      // 2) Распознавание вещи для предзаполнения полей.
-      setStatus('Обработка фото…')
-      const fields = file
-        ? await classifyPhoto(file, file.name)
-        : await classifyImageUrl(source.url ?? '')
 
       return { imageUrl, fields }
     } catch (err) {

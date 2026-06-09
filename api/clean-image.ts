@@ -8,17 +8,42 @@ interface Res extends ServerResponse {
 const GEMINI_MODEL = 'gemini-2.5-flash-image'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
-// Промт для приведения фото вещи к виду «как в онлайн-магазине».
-const PROMPT =
-  'Turn this into a professional e-commerce product photo of the single clothing ' +
-  'item only. Remove the hanger, hands, clips, wall and every other object and the ' +
-  'background. Place the garment perfectly centered and straightened on a pure solid ' +
-  'white #FFFFFF background. Present it as a clean, symmetric studio catalog shot: ' +
-  'gently smooth out wrinkles and creases, neat even soft studio lighting, no cast ' +
-  'shadows, no reflections, no halo or outline around the edges. Keep the garment ' +
-  'exactly the same — same silhouette, true natural color, fabric texture, buttons, ' +
-  'seams, collar and all design details. Do not restyle it, do not add or remove any ' +
-  'design elements, do not change proportions. Output a sharp, high-resolution image.'
+// Общий хвост промта — единые требования к качеству для всех типов вещей.
+const COMMON =
+  ' Keep the item exactly the same: true natural color, real material and texture, ' +
+  'all details, logos and hardware. Do not add, remove, restyle or redraw any part ' +
+  'of the item, do not change its proportions. Pure solid white #FFFFFF background, ' +
+  'item centered with small even margins, even soft studio lighting, no cast shadows, ' +
+  'no reflections, no halo or outline around the edges. Output a sharp, ' +
+  'high-resolution e-commerce product photo.'
+
+// Промты по типу вещи (категории из распознавания).
+const PROMPTS: Record<string, string> = {
+  clothing:
+    'Professional e-commerce product photo of this single clothing item. Remove the ' +
+    'hanger, clips, hands, wall and all background. Lay the garment straight and ' +
+    'symmetric, gently smoothing out wrinkles and creases.' + COMMON,
+  shoes:
+    'Professional e-commerce product photo of this footwear. Remove the chair, floor, ' +
+    'wall, hands and all background. Show the shoes cleanly; if it is a pair, keep ' +
+    'both neatly arranged together in a natural product angle (a clean three-quarter ' +
+    'view).' + COMMON,
+  bags:
+    'Professional e-commerce product photo of this bag. Remove the hook, hanger, hand, ' +
+    'wall and all background. Arrange the bag facing front with its strap laid out ' +
+    'neatly and symmetrically.' + COMMON,
+  accessory:
+    'Professional e-commerce product photo of this accessory (jewelry/belt/etc). ' +
+    'Remove any packaging card, price tag, hand, fingers, clothing and all background. ' +
+    'Show only the accessory itself, arranged neatly and symmetrically.' + COMMON,
+}
+
+function promptForCategory(category: unknown): string {
+  if (category === 'shoes') return PROMPTS.shoes
+  if (category === 'bags') return PROMPTS.bags
+  if (category === 'accessories') return PROMPTS.accessory
+  return PROMPTS.clothing
+}
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -39,12 +64,13 @@ export default async function handler(req: IncomingMessage, res: Res) {
       return res.status(400).json({ error: 'image (base64) is required' })
     }
     const { mimeType, data } = parseDataUrl(image)
+    const prompt = promptForCategory(body?.category)
 
     const reqBody = JSON.stringify({
       contents: [
         {
           parts: [
-            { text: PROMPT },
+            { text: prompt },
             { inline_data: { mime_type: mimeType, data } },
           ],
         },
@@ -110,7 +136,7 @@ function extractImage(json: unknown): { mimeType: string; data: string } | null 
   return null
 }
 
-function readJsonBody(req: IncomingMessage): Promise<{ image?: unknown } | null> {
+function readJsonBody(req: IncomingMessage): Promise<{ image?: unknown; category?: unknown } | null> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
