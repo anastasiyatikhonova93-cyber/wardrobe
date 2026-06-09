@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Loader2 } from 'lucide-react'
 import type { ClothingItem, ClothingCategory, Season } from '../types'
 import { SeasonPicker } from './SeasonPicker'
 import { CategorySelect } from './CategorySelect'
@@ -84,12 +83,6 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
         processing={processing}
         processingStatus={status}
       />
-      {processing && (
-        <div className="flex items-center justify-center gap-2 text-xs text-zinc-500">
-          <Loader2 size={12} className="animate-spin" />
-          {status ?? 'Обрабатываю фото…'}
-        </div>
-      )}
       {error && <p className="text-[11px] text-red-400 text-center">{error}</p>}
       <Input label="Название" value={name} onChange={setName} placeholder="Белая рубашка оверсайз" />
       <CategorySelect value={category} onChange={setCategory} />

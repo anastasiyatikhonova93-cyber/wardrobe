@@ -45,7 +45,7 @@ export function useAutoIngest(uid: string | undefined) {
       // 1) Коррекция фото (только если есть локальные байты картинки).
       let imageUrl = source.url ?? ''
       if (file) {
-        setStatus('AI обрабатывает фото…')
+        setStatus('Обработка фото…')
         try {
           let processed: Blob
           try {
@@ -63,7 +63,7 @@ export function useAutoIngest(uid: string | undefined) {
       }
 
       // 2) Распознавание вещи для предзаполнения полей.
-      setStatus('Распознаю вещь…')
+      setStatus('Обработка фото…')
       const fields = file
         ? await classifyPhoto(file, file.name)
         : await classifyImageUrl(source.url ?? '')
