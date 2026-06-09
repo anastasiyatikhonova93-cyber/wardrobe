@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../lib/auth'
 import { useStore } from '../store'
 import { removeBackground, preloadModel } from '../lib/background-removal'
+import { cleanupBest } from '../lib/photo-cleanup'
 import { classifyPhoto } from '../lib/classify-photo'
 import type { ClassificationResult } from '../lib/classify-photo'
 import { uploadPhoto } from '../lib/storage'
@@ -39,7 +40,7 @@ interface ImportItem {
 
 const STATUS_LABELS: Record<ItemStatus, string> = {
   pending: 'Ожидание',
-  'removing-bg': 'Удаление фона...',
+  'removing-bg': 'Обработка фото...',
   uploading: 'Загрузка...',
   classifying: 'Распознавание...',
   done: 'Готово',
@@ -87,17 +88,22 @@ export function ImportPage() {
     await processQueue(items, async (item) => {
       if (!user) return
       try {
-        // Remove background
+        // Сначала распознаём — категория нужна для правильного промта обработки.
+        updateItem(item.id, { status: 'classifying' })
+        const classification = await classifyPhoto(item.file, item.file.name)
+
+        // AI-обработка с учётом типа вещи; при сбое — локальное вырезание фона.
         updateItem(item.id, { status: 'removing-bg' })
-        const processed = await removeBackground(item.file)
+        let processed: Blob
+        try {
+          processed = await cleanupBest(item.file, classification.category)
+        } catch {
+          processed = await removeBackground(item.file)
+        }
 
         // Upload processed image
         updateItem(item.id, { status: 'uploading' })
         const url = await uploadPhoto(processed, user.uid)
-
-        // Classify
-        updateItem(item.id, { status: 'classifying' })
-        const classification = await classifyPhoto(item.file, item.file.name)
 
         updateItem(item.id, {
           status: 'done',
