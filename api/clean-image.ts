@@ -10,7 +10,11 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GE
 
 // Общий хвост промта — единые требования к качеству для всех типов вещей.
 const COMMON =
-  ' Keep the item exactly the same: true natural color, real material and texture, ' +
+  ' If the item is being worn or held by a person, completely remove the person, ' +
+  'foot, leg, hand and any visible skin, and render ONLY the empty product. Never let ' +
+  'skin tone remain on the item or show through it: any see-through or mesh part must ' +
+  'show the item\'s own material/color or the empty inside, never beige skin. ' +
+  'Keep the item exactly the same: true natural color, real material and texture, ' +
   'all details, logos and hardware. Do not add, remove, restyle or redraw any part ' +
   'of the item, do not change its proportions. Pure solid white #FFFFFF background, ' +
   'item centered with small even margins, even soft studio lighting, no cast shadows, ' +
@@ -25,7 +29,9 @@ const PROMPTS: Record<string, string> = {
     'symmetric, gently smoothing out wrinkles and creases.' + COMMON,
   shoes:
     'Professional e-commerce product photo of this footwear. Remove the chair, floor, ' +
-    'wall, hands and all background. Show the shoes cleanly; if it is a pair, keep ' +
+    'wall, hands and all background. Render the footwear EMPTY — no foot, leg or skin ' +
+    'inside or showing through; the inner lining and insole must be the shoe\'s own ' +
+    'material and color, not skin tone. Show the shoes cleanly; if it is a pair, keep ' +
     'both neatly arranged together in a natural product angle (a clean three-quarter ' +
     'view).' + COMMON,
   bags:
