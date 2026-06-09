@@ -10,11 +10,15 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GE
 
 // Промт для приведения фото вещи к виду «как в онлайн-магазине».
 const PROMPT =
-  'Очисти это фото предмета одежды: убери всё лишнее (вешалку, руки, посторонние ' +
-  'предметы, фон) и помести вещь на однотонный чистый белый фон. Сделай аккуратную ' +
-  'студийную цветокоррекцию и ровное освещение, чтобы вещь выглядела презентабельно, ' +
-  'как на фото в интернет-магазине. Не меняй фасон, цвет, фактуру и детали самой вещи, ' +
-  'ничего не добавляй и не дорисовывай.'
+  'Turn this into a professional e-commerce product photo of the single clothing ' +
+  'item only. Remove the hanger, hands, clips, wall and every other object and the ' +
+  'background. Place the garment perfectly centered and straightened on a pure solid ' +
+  'white #FFFFFF background. Present it as a clean, symmetric studio catalog shot: ' +
+  'gently smooth out wrinkles and creases, neat even soft studio lighting, no cast ' +
+  'shadows, no reflections, no halo or outline around the edges. Keep the garment ' +
+  'exactly the same — same silhouette, true natural color, fabric texture, buttons, ' +
+  'seams, collar and all design details. Do not restyle it, do not add or remove any ' +
+  'design elements, do not change proportions. Output a sharp, high-resolution image.'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

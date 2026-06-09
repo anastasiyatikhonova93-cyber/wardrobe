@@ -62,6 +62,16 @@ export async function cleanupPhotoAI(source: Blob): Promise<Blob> {
   return dataUrlToBlob(data.image)
 }
 
+/**
+ * Лучший результат: AI-ретушь (Gemini, чистый белый фон + студийная коррекция),
+ * затем вырезание этого белого фона в прозрачный PNG — без ореола, т.к. фон
+ * после Gemini ровный и однотонный. Бросает ошибку, если AI недоступен.
+ */
+export async function cleanupBest(source: Blob): Promise<Blob> {
+  const ai = await cleanupPhotoAI(source)
+  return removeBackground(ai)
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
