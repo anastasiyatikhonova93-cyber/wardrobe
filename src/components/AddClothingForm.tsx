@@ -9,7 +9,7 @@ import { useAutoIngest } from '../hooks/useAutoIngest'
 import { preloadModel } from '../lib/background-removal'
 
 interface Props {
-  onAdd: (item: Omit<ClothingItem, 'id'>) => void
+  onAdd: (item: Omit<ClothingItem, 'id'>) => void | Promise<void>
   onClose: () => void
 }
 
@@ -49,15 +49,25 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
     if (!canSubmit || saving) return
     setSaving(true)
     setSaveError(null)
-    try {
-      await onAdd({
+
+    const add = Promise.resolve(
+      onAdd({
         name: name.trim(),
         category,
         color: color.trim(),
         seasons,
         imageUrl: imageUrl.trim() || undefined,
         shopUrl: shopUrl.trim() || undefined,
-      })
+      }),
+    )
+    // Подстраховка от unhandled rejection, если форма закроется по таймауту.
+    add.catch(() => {})
+    // Не виснем вечно на подтверждении сервера: вещь и так показывается локально
+    // сразу, поэтому через несколько секунд закрываем форму оптимистично.
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 6000))
+
+    try {
+      await Promise.race([add, timeout])
       onClose()
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Не удалось сохранить вещь')

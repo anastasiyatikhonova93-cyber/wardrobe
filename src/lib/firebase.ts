@@ -16,4 +16,10 @@ const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 // ignoreUndefinedProperties: пустые поля (shopUrl, imageUrl и т.п.) уходят как
 // undefined — без этой настройки addDoc/updateDoc падают на них с ошибкой.
-export const db = initializeFirestore(app, { ignoreUndefinedProperties: true })
+// experimentalAutoDetectLongPolling: на сетях/прокси, где потоковый канал
+// Firestore не проходит, запись «зависает» без ответа — авто-детект long-polling
+// это лечит.
+export const db = initializeFirestore(app, {
+  ignoreUndefinedProperties: true,
+  experimentalAutoDetectLongPolling: true,
+})
