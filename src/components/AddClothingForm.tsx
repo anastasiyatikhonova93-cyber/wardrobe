@@ -49,6 +49,8 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
     setSaving(true)
     setSaveError(null)
 
+    // Честный режим: ждём РЕАЛЬНОГО подтверждения записи от базы и показываем
+    // точную ошибку, если запись не проходит (раньше она пряталась за таймаутом).
     const add = Promise.resolve(
       onAdd({
         name: name.trim(),
@@ -59,17 +61,19 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
         shopUrl: shopUrl.trim() || undefined,
       }),
     )
-    // Подстраховка от unhandled rejection, если форма закроется по таймауту.
-    add.catch(() => {})
-    // Не виснем вечно на подтверждении сервера: вещь и так показывается локально
-    // сразу, поэтому через несколько секунд закрываем форму оптимистично.
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000))
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Сервер не подтвердил запись за 15 сек — нет связи с базой')),
+        15000,
+      ),
+    )
 
     try {
       await Promise.race([add, timeout])
       onClose()
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Не удалось сохранить вещь')
+      const err = e as { code?: string; message?: string }
+      setSaveError((err.code ? `[${err.code}] ` : '') + (err.message ?? 'Не удалось сохранить вещь'))
       setSaving(false)
     }
   }
