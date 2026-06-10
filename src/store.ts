@@ -4,6 +4,7 @@ import type {
   ClothingItem,
   ShoppingItem,
   Outfit,
+  Board,
   Profile,
   BodyFeature,
   Collaborator,
@@ -16,6 +17,7 @@ interface WardrobeState {
   wardrobe: ClothingItem[]
   shopping: ShoppingItem[]
   outfits: Outfit[]
+  boards: Board[]
   profile: Profile
   loading: boolean
 
@@ -44,6 +46,10 @@ interface WardrobeState {
   removeOutfit: (id: string) => Promise<void>
   updateOutfit: (id: string, patch: Partial<Outfit>) => Promise<void>
   setOutfits: (outfits: Omit<Outfit, 'id'>[]) => Promise<void>
+
+  addBoard: (board: Omit<Board, 'id'>) => Promise<Board>
+  removeBoard: (id: string) => Promise<void>
+  updateBoard: (id: string, patch: Partial<Board>) => Promise<void>
 
   updateProfile: (patch: Partial<Profile>) => Promise<void>
   addBodyFeature: (f: Omit<BodyFeature, 'id'>) => Promise<void>
@@ -90,6 +96,7 @@ const asOutfit = (d: AnyDoc): Outfit => {
   const categories = (d.categories ?? d.weather ?? []) as string[]
   return { wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], ...d, categories } as unknown as Outfit
 }
+const asBoard = (d: AnyDoc): Board => ({ outfitIds: [], ...d } as unknown as Board)
 
 type SetFn = (partial: Partial<WardrobeState> | ((s: WardrobeState) => Partial<WardrobeState>)) => void
 
@@ -100,6 +107,7 @@ async function loadData(set: SetFn) {
       wardrobe: (data.wardrobe ?? []).map(asClothing),
       shopping: (data.shopping ?? []).map(asShopping),
       outfits: (data.outfits ?? []).map(asOutfit),
+      boards: (data.boards ?? []).map(asBoard),
       profile: {
         features: (data.features ?? []).map((f: AnyDoc) => ({ id: f.id, ...f } as BodyFeature)),
         preferredStyles: data.profile?.preferredStyles ?? [],
@@ -122,6 +130,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   wardrobe: [],
   shopping: [],
   outfits: [],
+  boards: [],
   profile: defaultProfile,
   loading: true,
 
@@ -136,7 +145,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   },
 
   unsubscribe: () => {
-    set({ wardrobe: [], shopping: [], outfits: [], profile: defaultProfile, loading: false, isSharedView: false, sharedViewOwnerName: '' })
+    set({ wardrobe: [], shopping: [], outfits: [], boards: [], profile: defaultProfile, loading: false, isSharedView: false, sharedViewOwnerName: '' })
   },
 
   viewSharedWardrobe: () => { /* совместный доступ временно недоступен */ },
@@ -219,7 +228,17 @@ export const useStore = create<WardrobeState>()((set, get) => ({
 
   removeOutfit: async (id) => {
     await callDb('delete', { col: 'outfits', id })
-    set((s) => ({ outfits: s.outfits.filter((o) => o.id !== id) }))
+    // Каскад: убираем ссылку на удалённый образ из всех досок (иначе висячие id и кривой счётчик).
+    const affected = get().boards.filter((b) => b.outfitIds.includes(id))
+    for (const b of affected) {
+      await callDb('update', { col: 'boards', id: b.id, patch: { outfitIds: b.outfitIds.filter((x) => x !== id) } })
+    }
+    set((s) => ({
+      outfits: s.outfits.filter((o) => o.id !== id),
+      boards: s.boards.map((b) =>
+        b.outfitIds.includes(id) ? { ...b, outfitIds: b.outfitIds.filter((x) => x !== id) } : b,
+      ),
+    }))
   },
 
   updateOutfit: async (id, patch) => {
@@ -230,6 +249,23 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   setOutfits: async (outfits) => {
     const { ids } = await callDb('replace', { col: 'outfits', items: outfits })
     set({ outfits: outfits.map((o, j) => ({ ...o, id: ids[j] } as Outfit)) })
+  },
+
+  addBoard: async (board) => {
+    const { id } = await callDb('add', { col: 'boards', data: board })
+    const created = { ...board, id } as Board
+    set((s) => ({ boards: [...s.boards, created] }))
+    return created
+  },
+
+  removeBoard: async (id) => {
+    await callDb('delete', { col: 'boards', id })
+    set((s) => ({ boards: s.boards.filter((b) => b.id !== id) }))
+  },
+
+  updateBoard: async (id, patch) => {
+    await callDb('update', { col: 'boards', id, patch })
+    set((s) => ({ boards: s.boards.map((b) => (b.id === id ? { ...b, ...patch } : b)) }))
   },
 
   updateProfile: async (patch) => {

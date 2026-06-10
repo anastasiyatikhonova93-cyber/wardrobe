@@ -9,7 +9,7 @@ interface Res extends ServerResponse {
 }
 
 // Подколлекции, к которым разрешён доступ (защита от произвольных путей).
-const COLLECTIONS = ['wardrobe', 'shopping', 'outfits', 'features']
+const COLLECTIONS = ['wardrobe', 'shopping', 'outfits', 'features', 'boards']
 
 let app: App | undefined
 function admin() {
@@ -56,11 +56,12 @@ export default async function handler(req: IncomingMessage, res: Res) {
 
     switch (op) {
       case 'load': {
-        const [w, s, o, f, p] = await Promise.all([
+        const [w, s, o, f, b, p] = await Promise.all([
           base.collection('wardrobe').get(),
           base.collection('shopping').get(),
           base.collection('outfits').get(),
           base.collection('features').get(),
+          base.collection('boards').get(),
           base.get(),
         ])
         const docs = (snap: FirebaseFirestore.QuerySnapshot) =>
@@ -70,6 +71,7 @@ export default async function handler(req: IncomingMessage, res: Res) {
           shopping: docs(s),
           outfits: docs(o),
           features: docs(f),
+          boards: docs(b),
           profile: p.exists ? p.data() : {},
         })
       }

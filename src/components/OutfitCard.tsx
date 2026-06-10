@@ -1,8 +1,9 @@
 import { Trash2 } from 'lucide-react'
 import type { ClothingItem, ShoppingItem, Outfit } from '../types'
-import { SEASON_LABELS, CATEGORY_SCALE } from '../types'
+import { SEASON_LABELS } from '../types'
 import { useOutfitCategories } from '../store'
 import { TransparentImg } from './TransparentImg'
+import { computeBounds, getItemScale, ITEM_BASE_W } from '../lib/outfit-layout'
 
 interface Props {
   outfit: Outfit
@@ -12,28 +13,7 @@ interface Props {
   onEdit: (outfit: Outfit) => void
 }
 
-function getItemScale(itemId: string, allItems: (ClothingItem | ShoppingItem)[]): number {
-  const item = allItems.find((i) => i.id === itemId)
-  if (!item) return 1
-  return CATEGORY_SCALE[item.category] ?? 1
-}
-
-function computeBounds(positions: Outfit['itemPositions'], allItems: (ClothingItem | ShoppingItem)[]) {
-  if (!positions.length) return null
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (const p of positions) {
-    const s = getItemScale(p.itemId, allItems)
-    const w = 25 * s
-    const h = w * 1.33
-    if (p.x < minX) minX = p.x
-    if (p.y < minY) minY = p.y
-    if (p.x + w > maxX) maxX = p.x + w
-    if (p.y + h > maxY) maxY = p.y + h
-  }
-  return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY }
-}
-
-function OutfitPreview({ outfit, wardrobeItems, shoppingItems }: { outfit: Outfit; wardrobeItems: ClothingItem[]; shoppingItems: ShoppingItem[] }) {
+export function OutfitPreview({ outfit, wardrobeItems, shoppingItems }: { outfit: Outfit; wardrobeItems: ClothingItem[]; shoppingItems: ShoppingItem[] }) {
   const allItems = [...wardrobeItems, ...shoppingItems]
   const positions = outfit.itemPositions ?? []
   const bounds = computeBounds(positions, allItems)
@@ -55,7 +35,7 @@ function OutfitPreview({ outfit, wardrobeItems, shoppingItems }: { outfit: Outfi
         const item = allItems.find((i) => i.id === pos.itemId)
         if (!item) return null
         const itemScale = getItemScale(pos.itemId, allItems)
-        const itemW = 25 * itemScale
+        const itemW = ITEM_BASE_W * itemScale
         return (
           <div
             key={pos.itemId}
