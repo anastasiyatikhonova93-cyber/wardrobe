@@ -1,7 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import type { ClothingItem, ShoppingItem, Outfit } from '../types'
-import { SEASON_LABELS, DEFAULT_OUTFIT_CATEGORIES, CATEGORY_SCALE } from '../types'
-import { useStore } from '../store'
+import { SEASON_LABELS, CATEGORY_SCALE } from '../types'
+import { useOutfitCategories } from '../store'
 import { TransparentImg } from './TransparentImg'
 
 interface Props {
@@ -84,9 +84,10 @@ function OutfitPreview({ outfit, wardrobeItems, shoppingItems }: { outfit: Outfi
 
 export function OutfitCard({ outfit, wardrobeItems, shoppingItems, onRemove, onEdit }: Props) {
   const hasPositions = (outfit.itemPositions ?? []).length > 0
-  const allCategories = useStore((s) => s.profile.outfitCategories) ?? DEFAULT_OUTFIT_CATEGORIES
+  const allCategories = useOutfitCategories()
+  const nameById = new Map(allCategories.map((c) => [c.id, c.name]))
   const categoryNames = (outfit.categories ?? [])
-    .map((id) => allCategories.find((c) => c.id === id)?.name)
+    .map((id) => nameById.get(id))
     .filter(Boolean) as string[]
 
   return (
@@ -108,7 +109,6 @@ export function OutfitCard({ outfit, wardrobeItems, shoppingItems, onRemove, onE
           {[
             outfit.season ? SEASON_LABELS[outfit.season] : null,
             ...categoryNames,
-            ...(outfit.occasion ? [outfit.occasion] : []),
           ].filter(Boolean).join(' · ')}
         </p>
       </div>

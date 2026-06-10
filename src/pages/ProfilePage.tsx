@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, LogOut, Link2, Copy, Check, Trash2, Users } from 'lucide-react'
-import { useStore } from '../store'
+import { useStore, useOutfitCategories } from '../store'
 import { useAuth } from '../lib/auth'
 import type { BodyType, FeaturePreference, Category } from '../types'
-import { BODY_TYPE_LABELS, DEFAULT_OUTFIT_CATEGORIES } from '../types'
+import { BODY_TYPE_LABELS } from '../types'
 import { BodyFeatureRow } from '../components/BodyFeatureRow'
 import { Modal } from '../components/Modal'
 
@@ -281,14 +281,22 @@ function StylesSection({ readOnly }: { readOnly?: boolean }) {
 }
 
 function CategoriesSection() {
-  const { profile, addOutfitCategory, renameOutfitCategory, removeOutfitCategory } = useStore()
-  const categories = profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+  const { addOutfitCategory, renameOutfitCategory, removeOutfitCategory } = useStore()
+  const categories = useOutfitCategories()
   const [input, setInput] = useState('')
+  const saving = useRef(false)
 
-  function add() {
-    if (!input.trim()) return
-    addOutfitCategory(input)
-    setInput('')
+  async function add() {
+    if (saving.current) return // защита от двойного сабмита
+    const name = input.trim()
+    if (!name) return
+    saving.current = true
+    try {
+      await addOutfitCategory(name)
+    } finally {
+      saving.current = false
+      setInput('')
+    }
   }
 
   return (

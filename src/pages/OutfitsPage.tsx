@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
-import { useStore } from '../store'
+import { useStore, useOutfitCategories } from '../store'
 import type { Outfit, Category } from '../types'
-import { DEFAULT_OUTFIT_CATEGORIES } from '../types'
 import { OutfitCard } from '../components/OutfitCard'
 import { OutfitEditor } from '../components/OutfitEditor'
 
 export function OutfitsPage() {
-  const { wardrobe, shopping, outfits, removeOutfit, profile } = useStore()
-  const categories = profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+  const { wardrobe, shopping, outfits, removeOutfit } = useStore()
+  const categories = useOutfitCategories()
   const [outfitCategory, setOutfitCategory] = useState<string | 'all'>('all')
   const [outfitItem, setOutfitItem] = useState<string | null>(null)
   // undefined = закрыто, null = новый, Outfit = редактирование

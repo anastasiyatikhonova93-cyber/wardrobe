@@ -61,7 +61,7 @@ ${shoppingList || '(пусто)'}
 3. Составь 5-8 образов из всех вещей (имеющихся + планируемых + рекомендованных).
 
 Ответь ТОЛЬКО валидным JSON без markdown, без комментариев:
-{"suggestions":[{"name":"...","category":"...","color":"...","seasons":["..."],"reason":"..."}],"outfits":[{"name":"...","items":["название вещи"],"season":"...","occasion":"..."}]}`
+{"suggestions":[{"name":"...","category":"...","color":"...","seasons":["..."],"reason":"..."}],"outfits":[{"name":"...","items":["название вещи"],"season":"..."}]}`
 }
 
 interface AiResponse {
@@ -76,7 +76,6 @@ interface AiResponse {
     name: string
     items: string[]
     season: string
-    occasion: string
   }[]
 }
 
@@ -241,7 +240,6 @@ export async function analyzeWardrobe(
       wardrobeItemIds: wardrobeIds,
       shoppingItemIds: shoppingIds,
       season: o.season as Season,
-      occasion: o.occasion,
       itemPositions: [],
     }
   })
@@ -252,13 +250,11 @@ export async function analyzeWardrobe(
 export async function generateOutfitName(
   items: ClothingItem[],
   season: Season,
-  occasion?: string,
 ): Promise<string> {
   const itemsList = items.map((i) => describeItem(i)).join(', ')
   const prompt = `Придумай короткое (2-4 слова) название для образа НА РУССКОМ ЯЗЫКЕ.
 Вещи: ${itemsList}
 Сезон: ${SEASON_LABELS[season]}
-${occasion ? `Повод: ${occasion}` : ''}
 
 Название должно отражать настроение и стиль образа, быть запоминающимся.
 Примеры: «Городская прогулка», «Деловой шик», «Уютный вечер», «Весенняя свежесть».

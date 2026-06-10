@@ -67,7 +67,6 @@ export interface Outfit {
   season: Season
   /** Категории образа для фильтрации (id из Profile.outfitCategories). */
   categories?: string[]
-  occasion?: string
   itemPositions: OutfitItemPosition[]
 }
 

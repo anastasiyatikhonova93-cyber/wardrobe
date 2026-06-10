@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Plus, Trash2, Check, ArrowLeft, Loader2 } from 'lucide-react'
-import { useStore } from '../store'
+import { useStore, useOutfitCategories } from '../store'
 import type { Outfit, OutfitItemPosition, Season, ClothingItem, ClothingCategory } from '../types'
-import { SEASON_LABELS, DEFAULT_OUTFIT_CATEGORIES, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
+import { SEASON_LABELS, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
 import { TransparentImg } from './TransparentImg'
 import { generateOutfitName } from '../ai'
 
@@ -32,22 +32,30 @@ function autoLayout(itemIds: string[], items: ClothingItem[]): OutfitItemPositio
 }
 
 export function OutfitEditor({ outfit, onClose }: Props) {
-  const { wardrobe, addOutfit, updateOutfit, removeOutfit, profile, addOutfitCategory } = useStore()
-  const allCategories = profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+  const { wardrobe, addOutfit, updateOutfit, removeOutfit, addOutfitCategory } = useStore()
+  const allCategories = useOutfitCategories()
 
   const [name, setName] = useState(outfit?.name ?? '')
   const [season, setSeason] = useState<Season>(outfit?.season ?? 'spring')
   const [categories, setCategories] = useState<string[]>(outfit?.categories ?? [])
   const [addingCategory, setAddingCategory] = useState(false)
   const [newCategory, setNewCategory] = useState('')
+  const savingCategory = useRef(false)
 
   async function commitNewCategory() {
-    const created = await addOutfitCategory(newCategory)
-    if (created) setCategories((cur) => [...cur, created.id]) // сразу отмечаем у образа
-    setNewCategory('')
-    setAddingCategory(false)
+    if (savingCategory.current) return // защита от двойного сабмита (быстрый Enter/клик)
+    const name = newCategory.trim()
+    if (!name) return
+    savingCategory.current = true
+    try {
+      const created = await addOutfitCategory(name)
+      if (created) setCategories((cur) => [...cur, created.id]) // сразу отмечаем у образа
+    } finally {
+      savingCategory.current = false
+      setNewCategory('')
+      setAddingCategory(false)
+    }
   }
-  const [occasion, setOccasion] = useState(outfit?.occasion ?? '')
   const [itemIds, setItemIds] = useState<string[]>(outfit?.wardrobeItemIds ?? [])
   const [positions, setPositions] = useState<OutfitItemPosition[]>(() => {
     if (outfit?.itemPositions?.length) {
@@ -153,7 +161,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
       let outfitName = name
       if (!outfitName) {
         const items = itemIds.map((id) => wardrobe.find((w) => w.id === id)).filter(Boolean) as ClothingItem[]
-        outfitName = await generateOutfitName(items, season, occasion || undefined)
+        outfitName = await generateOutfitName(items, season)
       }
       const data: Record<string, unknown> = {
         name: outfitName,
@@ -163,9 +171,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
         categories,
         itemPositions: positions,
       }
-      if (occasion) data.occasion = occasion
       if (outfit) {
-        if (!occasion) data.occasion = ''
         await updateOutfit(outfit.id, data as Partial<Outfit>)
       } else {
         await addOutfit(data as Omit<Outfit, 'id'>)
@@ -292,17 +298,6 @@ export function OutfitEditor({ outfit, onClose }: Props) {
                 </button>
               </div>
             )}
-          </div>
-
-          {/* Occasion */}
-          <div className="mt-3">
-            <input
-              type="text"
-              value={occasion}
-              onChange={(e) => setOccasion(e.target.value)}
-              placeholder="Повод (опционально)"
-              className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400"
-            />
           </div>
 
           {/* Canvas */}

@@ -139,6 +139,9 @@ function subscribeToData(uid: string, set: (partial: Partial<WardrobeState> | ((
   )
 }
 
+/** Категории образов профиля с фолбэком на дефолтные — единый источник для UI и мутаций. */
+const catsOf = (s: WardrobeState): Category[] => s.profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+
 export const useStore = create<WardrobeState>()((set, get) => ({
   wardrobe: [],
   shopping: [],
@@ -360,7 +363,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
     if (!viewingUid || get().isSharedView) return
     const trimmed = name.trim()
     if (!trimmed) return
-    const current = get().profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+    const current = catsOf(get())
     const category: Category = { id: crypto.randomUUID(), name: trimmed }
     await setDoc(profileDoc(viewingUid), { outfitCategories: [...current, category] }, { merge: true })
     return category
@@ -370,14 +373,14 @@ export const useStore = create<WardrobeState>()((set, get) => ({
     if (!viewingUid || get().isSharedView) return
     const trimmed = name.trim()
     if (!trimmed) return
-    const current = get().profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+    const current = catsOf(get())
     const next = current.map((c) => (c.id === id ? { ...c, name: trimmed } : c))
     await setDoc(profileDoc(viewingUid), { outfitCategories: next }, { merge: true })
   },
 
   removeOutfitCategory: async (id) => {
     if (!viewingUid || get().isSharedView) return
-    const current = get().profile.outfitCategories ?? DEFAULT_OUTFIT_CATEGORIES
+    const current = catsOf(get())
     const next = current.filter((c) => c.id !== id)
     await setDoc(profileDoc(viewingUid), { outfitCategories: next }, { merge: true })
 
@@ -437,3 +440,6 @@ export const useStore = create<WardrobeState>()((set, get) => ({
     await deleteDoc(doc(db, 'capsule', authUid, 'collaborators', uid))
   },
 }))
+
+/** Категории образов текущего профиля (или дефолтные). Единый селектор для всех компонентов. */
+export const useOutfitCategories = () => useStore(catsOf)
