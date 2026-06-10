@@ -70,6 +70,18 @@ export interface Outfit {
   itemPositions: OutfitItemPosition[]
 }
 
+/** Доска — кураторская подборка из нескольких образов (создаётся через фильтр). */
+export interface Board {
+  id: string
+  name: string
+  /** Отобранные образы (ручной отбор после фильтра). */
+  outfitIds: string[]
+  /** Запомненный фильтр для повторного редактирования. `null` — фильтр снят
+   *  (нужно явное значение, а не undefined: merge-обновление в /api/db не удаляет undefined-поля). */
+  filterCategory?: string | null
+  filterItemId?: string | null
+}
+
 export interface BodyFeature {
   id: string
   area: string

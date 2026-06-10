@@ -127,20 +127,26 @@ export function computeBoardLayout(prepared: PreparedItem[], width = 1040, gap =
   return { width, height: Math.max(cursorY, gap), placed }
 }
 
-/** Рисует доску на canvas и отдаёт PNG data-URL для скачивания. */
-export async function renderBoardToPng(layout: BoardLayout, scale = 2): Promise<string> {
-  // iOS Safari ограничивает canvas по стороне и по общей площади — при большом
-  // гардеробе доска высокая, и на дефолтном масштабе можно получить пустой/чёрный
-  // PNG. Снижаем масштаб ровно настолько, чтобы уложиться в безопасные лимиты.
+/**
+ * Безопасный масштаб canvas под лимиты iOS Safari (сторона/площадь). При большой
+ * доске дефолтный масштаб даёт пустой/чёрный PNG — снижаем ровно до лимитов.
+ * Общий хелпер для всех canvas-рендеров досок.
+ */
+export function fitCanvasScale(width: number, height: number, maxScale = 2): number {
   const MAX_SIDE = 8192
   const MAX_AREA = 16_000_000
   const fit = Math.min(
-    scale,
-    MAX_SIDE / layout.width,
-    MAX_SIDE / layout.height,
-    Math.sqrt(MAX_AREA / (layout.width * layout.height)),
+    maxScale,
+    MAX_SIDE / width,
+    MAX_SIDE / height,
+    Math.sqrt(MAX_AREA / (width * height)),
   )
-  scale = Number.isFinite(fit) ? Math.max(0.1, fit) : 1
+  return Number.isFinite(fit) ? Math.max(0.1, fit) : 1
+}
+
+/** Рисует доску на canvas и отдаёт PNG data-URL для скачивания. */
+export async function renderBoardToPng(layout: BoardLayout, scale = 2): Promise<string> {
+  scale = fitCanvasScale(layout.width, layout.height, scale)
 
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(layout.width * scale)
