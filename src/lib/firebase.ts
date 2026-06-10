@@ -1,6 +1,10 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { initializeFirestore } from 'firebase/firestore'
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -14,12 +18,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
-// ignoreUndefinedProperties: пустые поля (shopUrl, imageUrl и т.п.) уходят как
-// undefined — без этой настройки addDoc/updateDoc падают на них с ошибкой.
-// experimentalAutoDetectLongPolling: на сетях/прокси, где потоковый канал
-// Firestore не проходит, запись «зависает» без ответа — авто-детект long-polling
-// это лечит.
+// ignoreUndefinedProperties: пустые поля уходят как undefined — без этого
+//   addDoc/updateDoc падают с ошибкой.
+// experimentalForceLongPolling: принудительный надёжный транспорт. На сетях, где
+//   потоковый канал Firestore не проходит, запись зависала без ответа и не
+//   доходила до сервера; long-polling это лечит.
+// persistentLocalCache: записи сохраняются локально сразу и переживают
+//   перезагрузку, синхронизируясь с сервером в фоне — добавленные вещи больше
+//   не теряются.
 export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
-  experimentalAutoDetectLongPolling: true,
+  experimentalForceLongPolling: true,
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 })
