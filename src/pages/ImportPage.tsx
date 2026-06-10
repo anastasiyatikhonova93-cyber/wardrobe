@@ -110,21 +110,27 @@ export function ImportPage() {
 
     setSaving(true)
     setSaveError(null)
-    try {
-      const clothing: Omit<ClothingItem, 'id'>[] = toSave.map((item) => ({
-        name: item.name,
-        category: item.category,
-        color: item.color,
-        seasons: item.seasons,
-        imageUrl: item.processedImageUrl,
-      }))
 
-      await addClothingBatch(clothing)
+    const clothing: Omit<ClothingItem, 'id'>[] = toSave.map((item) => ({
+      name: item.name,
+      category: item.category,
+      color: item.color,
+      seasons: item.seasons,
+      imageUrl: item.processedImageUrl,
+    }))
+
+    // Запись сохраняется локально сразу (persistence) и синхронизируется в фоне,
+    // поэтому не виснем на подтверждении сервера: через таймаут уходим в гардероб.
+    const save = Promise.resolve(addClothingBatch(clothing))
+    save.catch(() => {})
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000))
+
+    try {
+      await Promise.race([save, timeout])
       reset()
       navigate('/wardrobe')
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Не удалось сохранить')
-    } finally {
       setSaving(false)
     }
   }
