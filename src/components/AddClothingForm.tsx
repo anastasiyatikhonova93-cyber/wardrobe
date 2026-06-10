@@ -1,15 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { ClothingItem, ClothingCategory, Season } from '../types'
 import { SeasonPicker } from './SeasonPicker'
 import { CategorySelect } from './CategorySelect'
 import { PhotoPicker } from './PhotoPicker'
+import { useAuth } from '../lib/auth'
+import { useAutoIngest } from '../hooks/useAutoIngest'
+import { preloadModel } from '../lib/background-removal'
 
 interface Props {
-  onAdd: (item: Omit<ClothingItem, 'id'>) => void
+  onAdd: (item: Omit<ClothingItem, 'id'>) => void | Promise<void>
   onClose: () => void
 }
 
 export function AddClothingForm({ onAdd, onClose }: Props) {
+  const { user } = useAuth()
   const [name, setName] = useState('')
   const [category, setCategory] = useState<ClothingCategory>('tops')
   const [color, setColor] = useState('')
@@ -18,40 +22,86 @@ export function AddClothingForm({ onAdd, onClose }: Props) {
   const [shopUrl, setShopUrl] = useState('')
 
   const [saving, setSaving] = useState(false)
-  const canSubmit = name.trim() && color.trim() && seasons.length > 0
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const { processing, status, error, ingest } = useAutoIngest(user?.uid)
+  // Достаточно названия — цвет и сезоны можно дозаполнить, не блокируем добавление.
+  const canSubmit = name.trim() && !processing
+
+  // Прогреваем модель удаления фона заранее, чтобы первая обработка шла быстрее.
+  useEffect(() => {
+    preloadModel().catch(() => {})
+  }, [])
+
+  async function handleImageSelected(source: { file?: File; url?: string }) {
+    const result = await ingest(source)
+    if (!result) return
+    setImageUrl(result.imageUrl)
+    // Предзаполняем поля, не затирая то, что пользователь уже ввёл вручную.
+    const { fields } = result
+    if (fields.name) setName((prev) => prev || fields.name)
+    if (fields.color) setColor((prev) => prev || fields.color)
+    setCategory(fields.category)
+    if (fields.seasons.length) setSeasons((prev) => (prev.length ? prev : fields.seasons))
+  }
 
   async function handleSubmit() {
     if (!canSubmit || saving) return
     setSaving(true)
-    try {
-      await onAdd({
+    setSaveError(null)
+
+    // Честный режим: ждём РЕАЛЬНОГО подтверждения записи от базы и показываем
+    // точную ошибку, если запись не проходит (раньше она пряталась за таймаутом).
+    const add = Promise.resolve(
+      onAdd({
         name: name.trim(),
         category,
         color: color.trim(),
         seasons,
         imageUrl: imageUrl.trim() || undefined,
         shopUrl: shopUrl.trim() || undefined,
-      })
+      }),
+    )
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Сервер не подтвердил запись за 15 сек — нет связи с базой')),
+        15000,
+      ),
+    )
+
+    try {
+      await Promise.race([add, timeout])
       onClose()
-    } catch {
+    } catch (e) {
+      const err = e as { code?: string; message?: string }
+      setSaveError((err.code ? `[${err.code}] ` : '') + (err.message ?? 'Не удалось сохранить вещь'))
       setSaving(false)
     }
   }
 
   return (
     <div className="space-y-4">
-      <PhotoPicker value={imageUrl} onChange={setImageUrl} />
+      <PhotoPicker
+        value={imageUrl}
+        onChange={setImageUrl}
+        onImageSelected={handleImageSelected}
+        processing={processing}
+        processingStatus={status}
+      />
+      {error && <p className="text-[11px] text-red-400 text-center">{error}</p>}
       <Input label="Название" value={name} onChange={setName} placeholder="Белая рубашка оверсайз" />
       <CategorySelect value={category} onChange={setCategory} />
       <Input label="Цвет" value={color} onChange={setColor} placeholder="белый" />
       <SeasonPicker selected={seasons} onChange={setSeasons} />
       <Input label="Ссылка на магазин" value={shopUrl} onChange={setShopUrl} placeholder="https://..." />
+      {saveError && (
+        <p className="text-[11px] text-red-500 text-center">{saveError}</p>
+      )}
       <button
         onClick={handleSubmit}
         disabled={!canSubmit || saving}
         className="w-full py-3 rounded-full bg-black text-white text-sm font-medium disabled:opacity-30 transition-opacity"
       >
-        Добавить
+        {saving ? 'Сохраняю…' : 'Добавить'}
       </button>
     </div>
   )

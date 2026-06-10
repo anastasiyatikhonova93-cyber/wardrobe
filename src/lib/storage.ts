@@ -1,5 +1,8 @@
 const MAX_DIMENSION = 800
 const JPEG_QUALITY = 0.7
+const WEBP_QUALITY = 0.82
+// Документ Firestore ограничен ~1 MiB. Держим картинку с запасом под прочие поля.
+const MAX_DATA_URL = 900_000
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -27,8 +30,8 @@ export async function uploadPhoto(file: File | Blob, _uid: string): Promise<stri
 
 function hasTransparency(img: HTMLImageElement): boolean {
   const c = document.createElement('canvas')
-  c.width = Math.min(img.width, 64)
-  c.height = Math.min(img.height, 64)
+  c.width = Math.min(img.naturalWidth || img.width, 64)
+  c.height = Math.min(img.naturalHeight || img.height, 64)
   const ctx = c.getContext('2d')!
   ctx.drawImage(img, 0, 0, c.width, c.height)
   const data = ctx.getImageData(0, 0, c.width, c.height).data
@@ -38,34 +41,64 @@ function hasTransparency(img: HTMLImageElement): boolean {
   return false
 }
 
-export function compressToDataUrl(
-  img: HTMLImageElement,
-  maxDim = MAX_DIMENSION,
-  quality = JPEG_QUALITY,
-): string {
-  let { width, height } = img
+function fitDims(img: HTMLImageElement, maxDim: number): { width: number; height: number } {
+  let width = img.naturalWidth || img.width
+  let height = img.naturalHeight || img.height
   if (width > maxDim || height > maxDim) {
     const ratio = Math.min(maxDim / width, maxDim / height)
     width = Math.round(width * ratio)
     height = Math.round(height * ratio)
   }
+  return { width, height }
+}
 
-  const transparent = hasTransparency(img)
-
+function render(
+  img: HTMLImageElement,
+  width: number,
+  height: number,
+  transparent: boolean,
+): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')!
-
   if (!transparent) {
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, width, height)
   }
-
   ctx.drawImage(img, 0, 0, width, height)
+  return canvas
+}
 
+function encode(canvas: HTMLCanvasElement, transparent: boolean, quality: number): string {
   if (transparent) {
+    // WebP с альфой — в разы легче PNG. Если браузер не умеет кодировать WebP
+    // (старый Safari), toDataURL вернёт PNG — это ловит проверка префикса.
+    const webp = canvas.toDataURL('image/webp', WEBP_QUALITY)
+    if (webp.startsWith('data:image/webp')) return webp
     return canvas.toDataURL('image/png')
   }
   return canvas.toDataURL('image/jpeg', quality)
+}
+
+export function compressToDataUrl(
+  img: HTMLImageElement,
+  maxDim = MAX_DIMENSION,
+  quality = JPEG_QUALITY,
+): string {
+  const transparent = hasTransparency(img)
+
+  let dim = maxDim
+  let { width, height } = fitDims(img, dim)
+  let out = encode(render(img, width, height, transparent), transparent, quality)
+
+  // Гарантируем, что итог влезет в документ Firestore: при необходимости
+  // уменьшаем размер, пока не уложимся под лимит.
+  while (out.length > MAX_DATA_URL && dim > 240) {
+    dim = Math.round(dim * 0.82)
+    ;({ width, height } = fitDims(img, dim))
+    out = encode(render(img, width, height, transparent), transparent, quality)
+  }
+
+  return out
 }
