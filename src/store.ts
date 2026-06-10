@@ -1,21 +1,4 @@
 import { create } from 'zustand'
-import {
-  collection,
-  doc,
-  addDoc,
-  deleteDoc,
-  updateDoc,
-  setDoc,
-  onSnapshot,
-  writeBatch,
-  getDocs,
-  query,
-  where,
-  serverTimestamp,
-  runTransaction,
-  type Unsubscribe,
-} from 'firebase/firestore'
-import { db } from './lib/firebase'
 import { auth } from './lib/firebase'
 import type { ClothingItem, ShoppingItem, Outfit, Profile, BodyFeature, Collaborator, SharedWardrobe } from './types'
 
@@ -65,67 +48,53 @@ interface WardrobeState {
 
 const defaultProfile: Profile = { features: [], preferredStyles: [] }
 
-let unsubs: Unsubscribe[] = []
-let sharedUnsubs: Unsubscribe[] = []
-let authUid: string | null = null
-let viewingUid: string | null = null
-let safetyTimer: ReturnType<typeof setTimeout> | null = null
-
-function userCol(uid: string, name: string) {
-  return collection(db, 'capsule', uid, name)
+// Все обращения к данным идут через нашу serverless-функцию /api/db (admin SDK),
+// а не напрямую к Firestore — потому что на части сетей домен Firestore
+// заблокирован, а наш сервер к базе достучаться может.
+async function callDb(op: string, args: Record<string, unknown> = {}): Promise<any> {
+  const user = auth.currentUser
+  if (!user) throw new Error('Не авторизован')
+  const idToken = await user.getIdToken()
+  const res = await fetch('/api/db', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ op, idToken, ...args }),
+  })
+  if (!res.ok) {
+    const e = await res.json().catch(() => null)
+    throw new Error(e?.error ?? `Ошибка базы (${res.status})`)
+  }
+  return res.json()
 }
 
-function userDoc(uid: string, name: string, id: string) {
-  return doc(db, 'capsule', uid, name, id)
-}
+type AnyDoc = Record<string, any>
+const asClothing = (d: AnyDoc): ClothingItem => ({ seasons: [], ...d } as unknown as ClothingItem)
+const asShopping = (d: AnyDoc): ShoppingItem =>
+  ({ seasons: [], isAiSuggested: false, isConfirmed: true, ...d } as unknown as ShoppingItem)
+const asOutfit = (d: AnyDoc): Outfit =>
+  ({ wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], weather: [], ...d } as unknown as Outfit)
 
-function profileDoc(uid: string) {
-  return doc(db, 'capsule', uid)
-}
+type SetFn = (partial: Partial<WardrobeState> | ((s: WardrobeState) => Partial<WardrobeState>)) => void
 
-function subscribeToData(uid: string, set: (partial: Partial<WardrobeState> | ((s: WardrobeState) => Partial<WardrobeState>)) => void) {
-  let loaded = 0
-  const checkLoaded = () => { if (++loaded >= 5) set({ loading: false }) }
-  const onErr = () => checkLoaded()
-
-  // Safety timeout — if listeners don't all fire in 5s, stop loading anyway
-  if (safetyTimer) clearTimeout(safetyTimer)
-  safetyTimer = setTimeout(() => { safetyTimer = null; set({ loading: false }) }, 5000)
-
-  unsubs.push(
-    onSnapshot(userCol(uid, 'wardrobe'), (snap) => {
-      set({ wardrobe: snap.docs.map((d) => ({ seasons: [], ...d.data(), id: d.id } as unknown as ClothingItem)) })
-      checkLoaded()
-    }, onErr),
-    onSnapshot(userCol(uid, 'shopping'), (snap) => {
-      set({ shopping: snap.docs.map((d) => ({ seasons: [], isAiSuggested: false, isConfirmed: true, ...d.data(), id: d.id } as unknown as ShoppingItem)) })
-      checkLoaded()
-    }, onErr),
-    onSnapshot(userCol(uid, 'outfits'), (snap) => {
-      set({ outfits: snap.docs.map((d) => ({ wardrobeItemIds: [], shoppingItemIds: [], itemPositions: [], weather: [], ...d.data(), id: d.id } as unknown as Outfit)) })
-      checkLoaded()
-    }, onErr),
-    onSnapshot(userCol(uid, 'features'), (snap) => {
-      const features = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BodyFeature))
-      set((s) => ({ profile: { ...s.profile, features } }))
-      checkLoaded()
-    }, onErr),
-    onSnapshot(profileDoc(uid), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data()
-        set((s) => ({
-          profile: {
-            ...s.profile,
-            height: d.height,
-            weight: d.weight,
-            bodyType: d.bodyType,
-            preferredStyles: d.preferredStyles ?? [],
-          },
-        }))
-      }
-      checkLoaded()
-    }, onErr),
-  )
+async function loadData(set: SetFn) {
+  try {
+    const data = await callDb('load')
+    set({
+      wardrobe: (data.wardrobe ?? []).map(asClothing),
+      shopping: (data.shopping ?? []).map(asShopping),
+      outfits: (data.outfits ?? []).map(asOutfit),
+      profile: {
+        features: (data.features ?? []).map((f: AnyDoc) => ({ id: f.id, ...f } as BodyFeature)),
+        preferredStyles: data.profile?.preferredStyles ?? [],
+        height: data.profile?.height,
+        weight: data.profile?.weight,
+        bodyType: data.profile?.bodyType,
+      },
+      loading: false,
+    })
+  } catch {
+    set({ loading: false })
+  }
 }
 
 export const useStore = create<WardrobeState>()((set, get) => ({
@@ -140,251 +109,124 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   collaborators: [],
   sharedWardrobes: [],
 
-  subscribe: (uid) => {
-    get().unsubscribe()
-    authUid = uid
-    viewingUid = uid
-    set({ loading: true, isSharedView: false, sharedViewOwnerName: '' })
-
-    subscribeToData(uid, set)
-
-    // Subscribe to collaborators list (who has access to my wardrobe)
-    unsubs.push(
-      onSnapshot(userCol(uid, 'collaborators'), (snap) => {
-        set({
-          collaborators: snap.docs.map((d) => ({
-            uid: d.id,
-            ...d.data(),
-          } as unknown as Collaborator)),
-        })
-      }, () => { /* ignore permission errors */ }),
-    )
-
-    // Subscribe to shared wardrobes (whose wardrobes I have access to)
-    sharedUnsubs.forEach((u) => u())
-    sharedUnsubs = []
-    const q = query(collection(db, 'invites'), where('acceptedBy', '==', uid), where('used', '==', true))
-    sharedUnsubs.push(
-      onSnapshot(q, (snap) => {
-        set({
-          sharedWardrobes: snap.docs.map((d) => ({
-            ownerUid: d.data().ownerUid,
-            ownerName: d.data().ownerName,
-          } as SharedWardrobe)),
-        })
-      }, () => { /* ignore index/permission errors */ }),
-    )
+  subscribe: () => {
+    set({ loading: true, isSharedView: false, sharedViewOwnerName: '', collaborators: [], sharedWardrobes: [] })
+    void loadData(set)
   },
 
   unsubscribe: () => {
-    unsubs.forEach((u) => u())
-    unsubs = []
-    sharedUnsubs.forEach((u) => u())
-    sharedUnsubs = []
-    if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null }
-    authUid = null
-    viewingUid = null
-    set({ wardrobe: [], shopping: [], outfits: [], profile: defaultProfile, isSharedView: false, sharedViewOwnerName: '' })
+    set({ wardrobe: [], shopping: [], outfits: [], profile: defaultProfile, loading: false, isSharedView: false, sharedViewOwnerName: '' })
   },
 
-  viewSharedWardrobe: (ownerUid, ownerName) => {
-    unsubs.forEach((u) => u())
-    unsubs = []
-    viewingUid = ownerUid
-    set({ wardrobe: [], shopping: [], outfits: [], profile: defaultProfile, loading: true, isSharedView: true, sharedViewOwnerName: ownerName })
-    subscribeToData(ownerUid, set)
-  },
-
-  viewOwnWardrobe: () => {
-    if (!authUid) return
-    unsubs.forEach((u) => u())
-    unsubs = []
-    viewingUid = authUid
-    set({ wardrobe: [], shopping: [], outfits: [], profile: defaultProfile, loading: true, isSharedView: false, sharedViewOwnerName: '' })
-    subscribeToData(authUid, set)
-
-    // Re-subscribe to collaborators
-    unsubs.push(
-      onSnapshot(userCol(authUid, 'collaborators'), (snap) => {
-        set({
-          collaborators: snap.docs.map((d) => ({
-            uid: d.id,
-            ...d.data(),
-          } as unknown as Collaborator)),
-        })
-      }),
-    )
-  },
+  viewSharedWardrobe: () => { /* совместный доступ временно недоступен */ },
+  viewOwnWardrobe: () => { set({ loading: true }); void loadData(set) },
 
   addClothing: async (item) => {
-    if (!viewingUid) return
-    await addDoc(userCol(viewingUid, 'wardrobe'), item)
+    const { id } = await callDb('add', { col: 'wardrobe', data: item })
+    set((s) => ({ wardrobe: [...s.wardrobe, { ...item, id } as ClothingItem] }))
   },
 
   addClothingBatch: async (items) => {
-    if (!viewingUid) return
-    const BATCH_SIZE = 50
-    for (let i = 0; i < items.length; i += BATCH_SIZE) {
-      const batch = writeBatch(db)
-      const chunk = items.slice(i, i + BATCH_SIZE)
-      for (const item of chunk) {
-        const ref = doc(userCol(viewingUid, 'wardrobe'))
-        const clean = Object.fromEntries(
-          Object.entries(item).filter(([, v]) => v !== undefined),
-        )
-        batch.set(ref, clean)
-      }
-      await batch.commit()
+    const added: ClothingItem[] = []
+    for (let i = 0; i < items.length; i += 25) {
+      const chunk = items.slice(i, i + 25)
+      const { ids } = await callDb('batchAdd', { col: 'wardrobe', items: chunk })
+      chunk.forEach((it, j) => added.push({ ...it, id: ids[j] } as ClothingItem))
     }
+    set((s) => ({ wardrobe: [...s.wardrobe, ...added] }))
   },
 
   clearWardrobe: async () => {
-    if (!viewingUid || get().isSharedView) return
-    const snap = await getDocs(userCol(viewingUid, 'wardrobe'))
-    const BATCH_SIZE = 50
-    for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {
-      const batch = writeBatch(db)
-      snap.docs.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref))
-      await batch.commit()
-    }
+    await callDb('clear', { col: 'wardrobe' })
+    set({ wardrobe: [] })
   },
 
   removeClothing: async (id) => {
-    if (!viewingUid) return
-    await deleteDoc(userDoc(viewingUid, 'wardrobe', id))
+    await callDb('delete', { col: 'wardrobe', id })
+    set((s) => ({ wardrobe: s.wardrobe.filter((i) => i.id !== id) }))
   },
 
   updateClothing: async (id, patch) => {
-    if (!viewingUid) return
-    await updateDoc(userDoc(viewingUid, 'wardrobe', id), patch)
+    await callDb('update', { col: 'wardrobe', id, patch })
+    set((s) => ({ wardrobe: s.wardrobe.map((i) => (i.id === id ? { ...i, ...patch } : i)) }))
   },
 
   addShoppingItem: async (item) => {
-    if (!viewingUid) return
-    await addDoc(userCol(viewingUid, 'shopping'), item)
+    const { id } = await callDb('add', { col: 'shopping', data: item })
+    set((s) => ({ shopping: [...s.shopping, { ...item, id } as ShoppingItem] }))
   },
 
   removeShoppingItem: async (id) => {
-    if (!viewingUid) return
-    await deleteDoc(userDoc(viewingUid, 'shopping', id))
+    await callDb('delete', { col: 'shopping', id })
+    set((s) => ({ shopping: s.shopping.filter((i) => i.id !== id) }))
   },
 
   confirmShoppingItem: async (id) => {
-    if (!viewingUid) return
-    await updateDoc(userDoc(viewingUid, 'shopping', id), { isConfirmed: true })
+    await callDb('update', { col: 'shopping', id, patch: { isConfirmed: true } })
+    set((s) => ({ shopping: s.shopping.map((i) => (i.id === id ? { ...i, isConfirmed: true } : i)) }))
   },
 
   updateShoppingItem: async (id, patch) => {
-    if (!viewingUid) return
-    await updateDoc(userDoc(viewingUid, 'shopping', id), patch)
+    await callDb('update', { col: 'shopping', id, patch })
+    set((s) => ({ shopping: s.shopping.map((i) => (i.id === id ? { ...i, ...patch } : i)) }))
   },
 
   moveToWardrobe: async (id) => {
-    if (!viewingUid) return
     const item = get().shopping.find((i) => i.id === id)
     if (!item) return
     const { name, category, color, seasons, imageUrl, shopUrl } = item
     const clothing: Omit<ClothingItem, 'id'> = { name, category, color, seasons }
     if (imageUrl) clothing.imageUrl = imageUrl
     if (shopUrl) clothing.shopUrl = shopUrl
-    await addDoc(userCol(viewingUid, 'wardrobe'), clothing)
-    await deleteDoc(userDoc(viewingUid, 'shopping', id))
+    const { id: newId } = await callDb('add', { col: 'wardrobe', data: clothing })
+    await callDb('delete', { col: 'shopping', id })
+    set((s) => ({
+      wardrobe: [...s.wardrobe, { ...clothing, id: newId } as ClothingItem],
+      shopping: s.shopping.filter((i) => i.id !== id),
+    }))
   },
 
   addAiSuggestions: async (items) => {
-    if (!viewingUid) return
-    const batch = writeBatch(db)
-    for (const item of items) {
-      const ref = doc(userCol(viewingUid, 'shopping'))
-      const clean = Object.fromEntries(
-        Object.entries(item).filter(([, v]) => v !== undefined),
-      )
-      batch.set(ref, clean)
-    }
-    await batch.commit()
+    const { ids } = await callDb('batchAdd', { col: 'shopping', items })
+    set((s) => ({ shopping: [...s.shopping, ...items.map((it, j) => ({ ...it, id: ids[j] } as ShoppingItem))] }))
   },
 
   addOutfit: async (outfit) => {
-    if (!viewingUid) return
-    await addDoc(userCol(viewingUid, 'outfits'), outfit)
+    const { id } = await callDb('add', { col: 'outfits', data: outfit })
+    set((s) => ({ outfits: [...s.outfits, { ...outfit, id } as Outfit] }))
   },
 
   removeOutfit: async (id) => {
-    if (!viewingUid) return
-    await deleteDoc(userDoc(viewingUid, 'outfits', id))
+    await callDb('delete', { col: 'outfits', id })
+    set((s) => ({ outfits: s.outfits.filter((o) => o.id !== id) }))
   },
 
   updateOutfit: async (id, patch) => {
-    if (!viewingUid) return
-    await updateDoc(userDoc(viewingUid, 'outfits', id), patch)
+    await callDb('update', { col: 'outfits', id, patch })
+    set((s) => ({ outfits: s.outfits.map((o) => (o.id === id ? { ...o, ...patch } : o)) }))
   },
 
   setOutfits: async (outfits) => {
-    if (!viewingUid || get().isSharedView) return
-    const snap = await getDocs(userCol(viewingUid, 'outfits'))
-    const batch = writeBatch(db)
-    snap.docs.forEach((d) => batch.delete(d.ref))
-    for (const o of outfits) {
-      batch.set(doc(userCol(viewingUid, 'outfits')), o)
-    }
-    await batch.commit()
+    const { ids } = await callDb('replace', { col: 'outfits', items: outfits })
+    set({ outfits: outfits.map((o, j) => ({ ...o, id: ids[j] } as Outfit)) })
   },
 
   updateProfile: async (patch) => {
-    if (!viewingUid || get().isSharedView) return
-    await setDoc(profileDoc(viewingUid), patch, { merge: true })
+    await callDb('setProfile', { patch })
+    set((s) => ({ profile: { ...s.profile, ...patch } }))
   },
 
   addBodyFeature: async (f) => {
-    if (!viewingUid || get().isSharedView) return
-    await addDoc(userCol(viewingUid, 'features'), f)
+    const { id } = await callDb('add', { col: 'features', data: f })
+    set((s) => ({ profile: { ...s.profile, features: [...s.profile.features, { ...f, id } as BodyFeature] } }))
   },
 
   removeBodyFeature: async (id) => {
-    if (!viewingUid || get().isSharedView) return
-    await deleteDoc(userDoc(viewingUid, 'features', id))
+    await callDb('delete', { col: 'features', id })
+    set((s) => ({ profile: { ...s.profile, features: s.profile.features.filter((f) => f.id !== id) } }))
   },
 
-  createInvite: async () => {
-    if (!authUid) throw new Error('Not authenticated')
-    const token = crypto.randomUUID()
-    await setDoc(doc(db, 'invites', token), {
-      ownerUid: authUid,
-      ownerName: auth.currentUser?.displayName ?? '',
-      createdAt: serverTimestamp(),
-      used: false,
-    })
-    return `${window.location.origin}/invite/${token}`
-  },
-
-  acceptInvite: async (token) => {
-    const uid = authUid
-    if (!uid) throw new Error('Not authenticated')
-    const inviteRef = doc(db, 'invites', token)
-
-    const data = await runTransaction(db, async (tx) => {
-      const snap = await tx.get(inviteRef)
-      if (!snap.exists()) throw new Error('Приглашение не найдено')
-      const d = snap.data()
-      if (d.used) throw new Error('Приглашение уже использовано')
-      if (d.ownerUid === uid) throw new Error('Нельзя принять своё приглашение')
-
-      tx.update(inviteRef, { used: true, acceptedBy: uid })
-      tx.set(doc(db, 'capsule', d.ownerUid, 'collaborators', uid), {
-        role: 'stylist',
-        displayName: auth.currentUser?.displayName ?? '',
-        email: auth.currentUser?.email ?? '',
-        addedAt: serverTimestamp(),
-      })
-
-      return { ownerUid: d.ownerUid, ownerName: d.ownerName }
-    })
-
-    return data
-  },
-
-  removeCollaborator: async (uid) => {
-    if (!authUid) return
-    await deleteDoc(doc(db, 'capsule', authUid, 'collaborators', uid))
-  },
+  createInvite: async () => { throw new Error('Совместный доступ временно недоступен') },
+  acceptInvite: async () => { throw new Error('Совместный доступ временно недоступен') },
+  removeCollaborator: async () => { /* недоступно */ },
 }))

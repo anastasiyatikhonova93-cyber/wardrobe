@@ -1,10 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-} from 'firebase/firestore'
+import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,16 +14,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
-// ignoreUndefinedProperties: пустые поля уходят как undefined — без этого
-//   addDoc/updateDoc падают с ошибкой.
-// experimentalForceLongPolling: принудительный надёжный транспорт. На сетях, где
-//   потоковый канал Firestore не проходит, запись зависала без ответа и не
-//   доходила до сервера; long-polling это лечит.
-// persistentLocalCache: записи сохраняются локально сразу и переживают
-//   перезагрузку, синхронизируясь с сервером в фоне — добавленные вещи больше
-//   не теряются.
-export const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true,
-  experimentalForceLongPolling: true,
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-})
+// Данные приложения идут через /api/db (admin SDK), т.к. на части сетей домен
+// Firestore заблокирован. Этот клиентский db нужен только странице приглашений.
+export const db = getFirestore(app)
