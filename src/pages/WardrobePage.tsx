@@ -1,18 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Upload } from 'lucide-react'
+import { Plus, Upload, LayoutGrid } from 'lucide-react'
 import { useStore } from '../store'
 import type { ClothingCategory } from '../types'
 import { CATEGORY_LABELS } from '../types'
 import { ClothingCard } from '../components/ClothingCard'
 import { Modal } from '../components/Modal'
 import { AddClothingForm } from '../components/AddClothingForm'
+import { WardrobeBoard } from '../components/WardrobeBoard'
 
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as ClothingCategory[]
 
 export function WardrobePage() {
   const { wardrobe, addClothing, removeClothing, updateClothing } = useStore()
   const [showAdd, setShowAdd] = useState(false)
+  const [showBoard, setShowBoard] = useState(false)
   const [filter, setFilter] = useState<ClothingCategory | 'all'>('all')
 
   const filtered = filter === 'all'
@@ -21,7 +23,7 @@ export function WardrobePage() {
 
   return (
     <div>
-      <Header onAdd={() => setShowAdd(true)} />
+      <Header onAdd={() => setShowAdd(true)} onBoard={() => setShowBoard(true)} hasItems={wardrobe.length > 0} />
       <FilterBar filter={filter} onChange={setFilter} />
       {filtered.length === 0 ? (
         <EmptyItems />
@@ -41,17 +43,28 @@ export function WardrobePage() {
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Новая вещь">
         <AddClothingForm onAdd={addClothing} onClose={() => setShowAdd(false)} />
       </Modal>
+
+      {showBoard && <WardrobeBoard wardrobe={wardrobe} onClose={() => setShowBoard(false)} />}
     </div>
   )
 }
 
-function Header({ onAdd }: { onAdd: () => void }) {
+function Header({ onAdd, onBoard, hasItems }: { onAdd: () => void; onBoard: () => void; hasItems: boolean }) {
   const navigate = useNavigate()
 
   return (
     <div className="flex items-center justify-between mb-4">
       <h1 className="text-xl font-semibold">Гардероб</h1>
       <div className="flex items-center gap-2">
+        {hasItems && (
+          <button
+            onClick={onBoard}
+            className="rounded-full bg-zinc-100 text-zinc-600 p-2.5 transition-transform active:scale-95 hover:bg-zinc-200"
+            title="Доска гардероба"
+          >
+            <LayoutGrid size={18} />
+          </button>
+        )}
         <button
           onClick={() => navigate('/import')}
           className="rounded-full bg-zinc-100 text-zinc-600 p-2.5 transition-transform active:scale-95 hover:bg-zinc-200"
