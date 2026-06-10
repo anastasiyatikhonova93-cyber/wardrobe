@@ -22,7 +22,7 @@ export function ClothingCard({ item, onRemove, onUpdateImage }: Props) {
         <img
           src={item.imageUrl}
           alt={item.name}
-          className="w-full aspect-[3/4] object-cover"
+          className="w-full aspect-[3/4] object-contain"
           onError={() => setImgBroken(true)}
         />
       ) : (

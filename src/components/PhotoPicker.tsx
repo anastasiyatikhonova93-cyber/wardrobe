@@ -1,29 +1,24 @@
 import { useState, useRef } from 'react'
-import { Camera, Link, X, Loader2, Wand2 } from 'lucide-react'
+import { Camera, Link, X, Loader2 } from 'lucide-react'
 import { uploadPhoto } from '../lib/storage'
 import { useAuth } from '../lib/auth'
 import { isDirectImageUrl, fetchOgImage } from '../lib/og'
-import { usePhotoCorrection } from '../hooks/usePhotoCorrection'
 
 interface Props {
   value: string
   onChange: (url: string) => void
+  onImageSelected?: (source: { file?: File; url?: string }) => void
+  processing?: boolean
+  processingStatus?: string | null
 }
 
-export function PhotoPicker({ value, onChange }: Props) {
+export function PhotoPicker({ value, onChange, onImageSelected, processing, processingStatus }: Props) {
   const { user } = useAuth()
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [urlDraft, setUrlDraft] = useState('')
   const [uploading, setUploading] = useState(false)
   const [resolving, setResolving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  const { correcting, correct } = usePhotoCorrection(user?.uid)
-
-  async function handleCorrection() {
-    if (!value) return
-    const newUrl = await correct(value)
-    if (newUrl) onChange(newUrl)
-  }
 
   async function handleFile(file: File) {
     if (!user) return
@@ -31,6 +26,7 @@ export function PhotoPicker({ value, onChange }: Props) {
     try {
       const url = await uploadPhoto(file, user.uid)
       onChange(url)
+      onImageSelected?.({ file, url })
     } catch { /* ignore */ }
     setUploading(false)
   }
@@ -39,15 +35,15 @@ export function PhotoPicker({ value, onChange }: Props) {
     const trimmed = urlDraft.trim()
     if (!trimmed) return
 
-    if (isDirectImageUrl(trimmed)) {
-      onChange(trimmed)
-    } else {
+    let finalUrl = trimmed
+    if (!isDirectImageUrl(trimmed)) {
       setResolving(true)
       const img = await fetchOgImage(trimmed)
-      if (img) onChange(img)
-      else onChange(trimmed)
+      finalUrl = img ?? trimmed
       setResolving(false)
     }
+    onChange(finalUrl)
+    onImageSelected?.({ url: finalUrl })
     setShowUrlInput(false)
     setUrlDraft('')
   }
@@ -56,17 +52,7 @@ export function PhotoPicker({ value, onChange }: Props) {
     <div>
       <label className="text-xs text-zinc-400 mb-1 block">Фото</label>
       {value ? (
-        <>
-          <Preview src={value} onClear={() => onChange('')} />
-          <button
-            onClick={handleCorrection}
-            disabled={correcting}
-            className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] px-3 py-2 rounded-full bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors disabled:opacity-50"
-          >
-            {correcting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
-            {correcting ? 'Обрабатываю...' : 'Коррекция фото: адаптировать под электронный гардероб'}
-          </button>
-        </>
+        <Preview src={value} processing={processing} status={processingStatus} onClear={() => onChange('')} />
       ) : resolving ? (
         <div className="w-full aspect-[4/3] rounded-xl bg-zinc-50 border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center gap-2">
           <Loader2 size={24} className="text-zinc-300 animate-spin" />
@@ -102,7 +88,9 @@ export function PhotoPicker({ value, onChange }: Props) {
   )
 }
 
-function Preview({ src, onClear }: { src: string; onClear: () => void }) {
+function Preview({ src, processing, status, onClear }: {
+  src: string; processing?: boolean; status?: string | null; onClear: () => void
+}) {
   const [broken, setBroken] = useState(false)
   if (broken) {
     return (
@@ -114,13 +102,21 @@ function Preview({ src, onClear }: { src: string; onClear: () => void }) {
   }
   return (
     <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-zinc-100">
-      <img src={src} alt="" className="w-full h-full object-cover" onError={() => setBroken(true)} />
-      <button
-        onClick={onClear}
-        className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 backdrop-blur"
-      >
-        <X size={14} />
-      </button>
+      <img src={src} alt="" className="w-full h-full object-contain" onError={() => setBroken(true)} />
+      {!processing && (
+        <button
+          onClick={onClear}
+          className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 backdrop-blur"
+        >
+          <X size={14} />
+        </button>
+      )}
+      {processing && (
+        <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px] flex flex-col items-center justify-center gap-2 text-white">
+          <Loader2 size={22} className="animate-spin" />
+          <span className="text-xs">{status ?? 'Обрабатываю…'}</span>
+        </div>
+      )}
     </div>
   )
 }

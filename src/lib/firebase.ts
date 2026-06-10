@@ -14,4 +14,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
+// Данные приложения идут через /api/db (admin SDK), т.к. на части сетей домен
+// Firestore заблокирован. Этот клиентский db нужен только странице приглашений.
 export const db = getFirestore(app)
