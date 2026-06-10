@@ -11,32 +11,16 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useStore } from '../store'
+import { useImportStore } from '../lib/importStore'
+import type { ImportItem, ItemStatus } from '../lib/importStore'
 import { removeBackground, preloadModel } from '../lib/background-removal'
 import { cleanupBest } from '../lib/photo-cleanup'
 import { classifyPhoto } from '../lib/classify-photo'
-import type { ClassificationResult } from '../lib/classify-photo'
 import { uploadPhoto } from '../lib/storage'
 import { processQueue } from '../lib/process-queue'
 import { CategorySelect } from '../components/CategorySelect'
 import { SeasonPicker } from '../components/SeasonPicker'
-import type { ClothingItem, ClothingCategory, Season } from '../types'
-
-type ItemStatus = 'pending' | 'removing-bg' | 'uploading' | 'classifying' | 'done' | 'error'
-
-interface ImportItem {
-  id: string
-  file: File
-  status: ItemStatus
-  processedImageUrl?: string
-  classification?: ClassificationResult
-  error?: string
-  name: string
-  category: ClothingCategory
-  color: string
-  seasons: Season[]
-  excluded: boolean
-  thumbnailUrl: string
-}
+import type { ClothingItem } from '../types'
 
 const STATUS_LABELS: Record<ItemStatus, string> = {
   pending: 'Ожидание',
@@ -51,8 +35,8 @@ export function ImportPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { addClothingBatch } = useStore()
-  const [step, setStep] = useState<'select' | 'process' | 'review'>('select')
-  const [items, setItems] = useState<ImportItem[]>([])
+  const { step, items, processing, setStep, setProcessing, addFiles, updateItem, removeItem, reset } =
+    useImportStore()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -61,28 +45,22 @@ export function ImportPage() {
     preloadModel().catch(() => {})
   }, [])
 
-  function addLocalFiles(files: FileList | File[]) {
-    const newItems: ImportItem[] = Array.from(files)
-      .filter((f) => f.type.startsWith('image/'))
-      .map((f, i) => ({
-        id: `local-${Date.now()}-${i}`,
-        file: f,
-        status: 'pending' as const,
-        name: '',
-        category: 'tops' as ClothingCategory,
-        color: '',
-        seasons: [],
-        excluded: false,
-        thumbnailUrl: URL.createObjectURL(f),
-      }))
-    setItems((prev) => [...prev, ...newItems])
-  }
-
-  function updateItem(id: string, patch: Partial<ImportItem>) {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
-  }
+  // Предупреждаем перед закрытием/перезагрузкой вкладки, если есть незавершённый
+  // или несохранённый импорт — чтобы не потерять обработку (и потраченные деньги).
+  const hasUnsaved = items.length > 0 && step !== 'select'
+  useEffect(() => {
+    if (!hasUnsaved) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsaved])
 
   async function processAll() {
+    if (processing) return
+    setProcessing(true)
     setStep('process')
 
     await processQueue(items, async (item) => {
@@ -122,6 +100,7 @@ export function ImportPage() {
       }
     }, 2)
 
+    setProcessing(false)
     setStep('review')
   }
 
@@ -141,6 +120,7 @@ export function ImportPage() {
       }))
 
       await addClothingBatch(clothing)
+      reset()
       navigate('/wardrobe')
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Не удалось сохранить')
@@ -168,8 +148,8 @@ export function ImportPage() {
         <SelectStep
           items={items}
           fileRef={fileRef}
-          onAddFiles={addLocalFiles}
-          onRemove={(id) => setItems((prev) => prev.filter((i) => i.id !== id))}
+          onAddFiles={addFiles}
+          onRemove={removeItem}
           onProcess={processAll}
         />
       )}
@@ -196,7 +176,7 @@ export function ImportPage() {
         multiple
         className="hidden"
         onChange={(e) => {
-          if (e.target.files) addLocalFiles(e.target.files)
+          if (e.target.files) addFiles(e.target.files)
           e.target.value = ''
         }}
       />
