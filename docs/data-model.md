@@ -1,0 +1,65 @@
+# Модель данных
+
+Типы — в `src/types.ts`. Хранилище — Firestore, доступ только через `/api/db`
+(см. [architecture.md](architecture.md)).
+
+## Структура Firestore
+
+```
+capsule/{uid}                      ← документ профиля
+  ├─ height, weight, bodyType      (поля профиля прямо на документе)
+  ├─ preferredStyles: string[]
+  ├─ outfitCategories: Category[]
+  ├─ wardrobe/{id}                 ← подколлекция: ClothingItem
+  ├─ shopping/{id}                 ← подколлекция: ShoppingItem
+  ├─ outfits/{id}                  ← подколлекция: Outfit
+  └─ features/{id}                 ← подколлекция: BodyFeature
+```
+
+Профиль (`Profile`) живёт **полями на самом документе** `capsule/{uid}`, а сущности —
+во вложенных подколлекциях. `features` (особенности фигуры) — отдельная подколлекция,
+хотя на клиенте лежит внутри `profile.features`.
+
+## Основные сущности (`src/types.ts`)
+
+- **`ClothingItem`** — вещь гардероба: `name`, `category` (`ClothingCategory`),
+  `color`, `seasons`, опц. `style`/`imageUrl`/`shopUrl`/`notes`.
+- **`ShoppingItem`** — позиция списка покупок: те же базовые поля + `price`,
+  `isAiSuggested`, `isConfirmed`, `aiReason`, `needColorAdvice`.
+- **`Outfit`** — образ: ссылки `wardrobeItemIds` / `shoppingItemIds`, `season`,
+  `categories` (id из `Profile.outfitCategories`), `itemPositions` (раскладка на холсте).
+- **`BodyFeature`** — особенность фигуры: `area`, `preference` (`hide`/`highlight`), `note`.
+- **`Category`** — пользовательская категория образа (`{ id, name }`).
+
+**Справочники-константы** (там же): `CATEGORY_LABELS`, `SEASON_LABELS`,
+`BODY_TYPE_LABELS` (русские подписи), `DEFAULT_OUTFIT_CATEGORIES`, `CATEGORY_SCALE`
+(масштаб вещи на холсте по категории).
+
+## Картинки хранятся инлайн как data-URL
+
+**Отдельного Storage-бакета нет.** Картинка вещи лежит прямо в документе как
+`imageUrl: "data:image/...;base64,..."`.
+
+Документ Firestore ограничен ~1 MiB, поэтому `src/lib/storage.ts` сжимает фото под
+запас (`MAX_DATA_URL` ≈ 900 КБ), при необходимости понижая `MAX_DIMENSION`
+итеративно (× 0.82), пока результат не уложится:
+
+- **Прозрачные** вещи → WebP с альфой (фолбэк PNG для старого Safari).
+- **Непрозрачные** → JPEG (`JPEG_QUALITY = 0.7`) на белой подложке.
+- Прозрачность определяется по выборке альфа-канала (`hasTransparency`).
+
+Подробности конвейера обработки фото — в [photo-pipeline.md](photo-pipeline.md).
+
+## Миграции читаются на лету при загрузке
+
+Схема версионируется не через скрипты, а **мягким чтением** в адаптерах стора
+(`src/store.ts`). При загрузке каждая запись прогоняется через `asClothing` /
+`asShopping` / `asOutfit`, которые проставляют дефолты и читают старые поля.
+
+Пример (`asOutfit`): старое поле `weather` читается как `categories`, если новое не
+задано. id погодных `DEFAULT_OUTFIT_CATEGORIES` (`hot`/`warm`/`cool`/`cold`)
+намеренно совпадают со старыми значениями `weather`, чтобы метки сохранились.
+
+**Правило:** при переименовании/удалении полей сохраняй обратную совместимость так
+же — читай старое поле как фолбэк в соответствующем адаптере, не пиши разовых
+миграционных скриптов по базе.
