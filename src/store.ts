@@ -20,6 +20,9 @@ interface WardrobeState {
   boards: Board[]
   profile: Profile
   loading: boolean
+  /** Сообщение об ошибке загрузки данных. null — загрузка прошла успешно.
+   *  Нужно, чтобы при сбое не показывать пустой гардероб как «всё пропало». */
+  loadError: string | null
 
   isSharedView: boolean
   sharedViewOwnerName: string
@@ -28,6 +31,8 @@ interface WardrobeState {
 
   subscribe: (uid: string) => void
   unsubscribe: () => void
+  /** Повторить загрузку после ошибки (кнопка «Повторить»). */
+  retryLoad: () => void
 
   addClothing: (item: Omit<ClothingItem, 'id'>) => Promise<void>
   addClothingBatch: (items: Omit<ClothingItem, 'id'>[]) => Promise<void>
@@ -117,9 +122,12 @@ async function loadData(set: SetFn) {
         outfitCategories: data.profile?.outfitCategories,
       },
       loading: false,
+      loadError: null,
     })
-  } catch {
-    set({ loading: false })
+  } catch (e) {
+    // НЕ показываем пустой гардероб как «всё пропало»: данные в базе целы,
+    // просто загрузка не удалась (сеть, токен, ошибка сервера). Показываем ошибку.
+    set({ loading: false, loadError: e instanceof Error ? e.message : 'Не удалось загрузить данные' })
   }
 }
 
@@ -133,6 +141,7 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   boards: [],
   profile: defaultProfile,
   loading: true,
+  loadError: null,
 
   isSharedView: false,
   sharedViewOwnerName: '',
@@ -140,16 +149,18 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   sharedWardrobes: [],
 
   subscribe: () => {
-    set({ loading: true, isSharedView: false, sharedViewOwnerName: '', collaborators: [], sharedWardrobes: [] })
+    set({ loading: true, loadError: null, isSharedView: false, sharedViewOwnerName: '', collaborators: [], sharedWardrobes: [] })
     void loadData(set)
   },
 
   unsubscribe: () => {
-    set({ wardrobe: [], shopping: [], outfits: [], boards: [], profile: defaultProfile, loading: false, isSharedView: false, sharedViewOwnerName: '' })
+    set({ wardrobe: [], shopping: [], outfits: [], boards: [], profile: defaultProfile, loading: false, loadError: null, isSharedView: false, sharedViewOwnerName: '' })
   },
 
+  retryLoad: () => { set({ loading: true, loadError: null }); void loadData(set) },
+
   viewSharedWardrobe: () => { /* совместный доступ временно недоступен */ },
-  viewOwnWardrobe: () => { set({ loading: true }); void loadData(set) },
+  viewOwnWardrobe: () => { set({ loading: true, loadError: null }); void loadData(set) },
 
   addClothing: async (item) => {
     const { id } = await callDb('add', { col: 'wardrobe', data: item })

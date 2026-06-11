@@ -13,7 +13,7 @@ import { SeedPage } from './pages/SeedPage'
 import { FixPhotosPage } from './pages/FixPhotosPage'
 import { InvitePage, getPendingInvite, clearPendingInvite } from './pages/InvitePage'
 import { SharedWardrobesPage } from './pages/SharedWardrobesPage'
-import { Loader2 } from 'lucide-react'
+import { Loader2, RotateCw, WifiOff } from 'lucide-react'
 
 export default function App() {
   return (
@@ -27,7 +27,7 @@ export default function App() {
 
 function AppShell() {
   const { user, loading: authLoading } = useAuth()
-  const { subscribe, unsubscribe, loading: dataLoading } = useStore()
+  const { subscribe, unsubscribe, loading: dataLoading, loadError, retryLoad } = useStore()
   const location = useLocation()
   const navigate = useNavigate()
   const isInvitePath = location.pathname.startsWith('/invite/')
@@ -64,6 +64,12 @@ function AppShell() {
     return <AuthPage />
   }
 
+  // Загрузка данных не удалась — показываем ошибку и кнопку «Повторить»,
+  // а не пустой гардероб (который выглядит как «все вещи пропали»).
+  if (loadError) {
+    return <LoadErrorScreen message={loadError} onRetry={retryLoad} />
+  }
+
   return (
     <Layout>
       <Routes>
@@ -84,6 +90,26 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <Loader2 size={24} className="animate-spin text-zinc-300" />
+    </div>
+  )
+}
+
+function LoadErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+      <WifiOff size={32} className="text-zinc-400" />
+      <div className="space-y-1">
+        <p className="font-medium text-zinc-800">Не удалось загрузить гардероб</p>
+        <p className="text-sm text-zinc-500">Вещи никуда не пропали — это сбой загрузки. Попробуйте ещё раз.</p>
+        <p className="text-xs text-zinc-400">{message}</p>
+      </div>
+      <button
+        onClick={onRetry}
+        className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+      >
+        <RotateCw size={16} />
+        Повторить
+      </button>
     </div>
   )
 }
