@@ -13,11 +13,7 @@ import { useAuth } from '../lib/auth'
 import { useStore } from '../store'
 import { useImportStore } from '../lib/importStore'
 import type { ImportItem, ItemStatus } from '../lib/importStore'
-import { removeBackground, preloadModel } from '../lib/background-removal'
-import { cleanupBest } from '../lib/photo-cleanup'
-import { classifyPhoto } from '../lib/classify-photo'
-import { uploadPhoto } from '../lib/storage'
-import { processQueue } from '../lib/process-queue'
+import { preloadModel } from '../lib/background-removal'
 import { CategorySelect } from '../components/CategorySelect'
 import { SeasonPicker } from '../components/SeasonPicker'
 import type { ClothingItem } from '../types'
@@ -35,7 +31,7 @@ export function ImportPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { addClothingBatch } = useStore()
-  const { step, items, processing, setStep, setProcessing, addFiles, updateItem, removeItem, reset } =
+  const { step, items, startProcessing, addFiles, updateItem, removeItem, reset } =
     useImportStore()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -45,63 +41,10 @@ export function ImportPage() {
     preloadModel().catch(() => {})
   }, [])
 
-  // Предупреждаем перед закрытием/перезагрузкой вкладки, если есть незавершённый
-  // или несохранённый импорт — чтобы не потерять обработку (и потраченные деньги).
-  const hasUnsaved = items.length > 0 && step !== 'select'
-  useEffect(() => {
-    if (!hasUnsaved) return
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [hasUnsaved])
-
-  async function processAll() {
-    if (processing) return
-    setProcessing(true)
-    setStep('process')
-
-    await processQueue(items, async (item) => {
-      if (!user) return
-      try {
-        // Сначала распознаём — категория нужна для правильного промта обработки.
-        updateItem(item.id, { status: 'classifying' })
-        const classification = await classifyPhoto(item.file, item.file.name)
-
-        // AI-обработка с учётом типа вещи; при сбое — локальное вырезание фона.
-        updateItem(item.id, { status: 'removing-bg' })
-        let processed: Blob
-        try {
-          processed = await cleanupBest(item.file, classification.category)
-        } catch {
-          processed = await removeBackground(item.file)
-        }
-
-        // Upload processed image
-        updateItem(item.id, { status: 'uploading' })
-        const url = await uploadPhoto(processed, user.uid)
-
-        updateItem(item.id, {
-          status: 'done',
-          processedImageUrl: url,
-          classification,
-          name: classification.name,
-          category: classification.category,
-          color: classification.color,
-          seasons: classification.seasons,
-        })
-      } catch (e) {
-        updateItem(item.id, {
-          status: 'error',
-          error: e instanceof Error ? e.message : 'Неизвестная ошибка',
-        })
-      }
-    }, 2)
-
-    setProcessing(false)
-    setStep('review')
+  // Обработка живёт в сторе и продолжается в фоне; компонент лишь запускает её.
+  function processAll() {
+    if (!user) return
+    startProcessing(user.uid)
   }
 
   async function saveAll() {
@@ -119,17 +62,20 @@ export function ImportPage() {
       imageUrl: item.processedImageUrl,
     }))
 
-    // Запись сохраняется локально сразу (persistence) и синхронизируется в фоне,
-    // поэтому не виснем на подтверждении сервера: через таймаут уходим в гардероб.
-    const save = Promise.resolve(addClothingBatch(clothing))
-    save.catch(() => {})
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000))
-
+    // Дожидаемся реального подтверждения записи: `addClothingBatch` пишет на сервер
+    // (`/api/db`, без локального persistence) и обновляет стор только после успеха.
+    // Чистим импорт и уходим в гардероб ТОЛЬКО когда сохранение действительно прошло —
+    // иначе при сбое сети потеряли бы обработанные вещи без следа.
     try {
-      await Promise.race([save, timeout])
+      await addClothingBatch(clothing)
       reset()
       navigate('/wardrobe')
     } catch (e) {
+      // Часть могла записаться (обрыв между чанками). Убираем уже сохранённые вещи из
+      // импорта — `clothing` и `toSave` идут в одном порядке, значит сохранились первые
+      // `savedCount`. Тогда повтор отправит только оставшееся, без дублей.
+      const savedCount = (e as Error & { savedCount?: number }).savedCount ?? 0
+      for (let i = 0; i < savedCount && i < toSave.length; i++) removeItem(toSave[i].id)
       setSaveError(e instanceof Error ? e.message : 'Не удалось сохранить')
       setSaving(false)
     }

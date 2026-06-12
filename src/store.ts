@@ -168,13 +168,24 @@ export const useStore = create<WardrobeState>()((set, get) => ({
   },
 
   addClothingBatch: async (items) => {
-    const added: ClothingItem[] = []
-    for (let i = 0; i < items.length; i += 25) {
-      const chunk = items.slice(i, i + 25)
-      const { ids } = await callDb('batchAdd', { col: 'wardrobe', items: chunk })
-      chunk.forEach((it, j) => added.push({ ...it, id: ids[j] } as ClothingItem))
+    // Пишем почанково и фиксируем каждый успешный чанк в стор сразу. Если сеть
+    // оборвётся между чанками, уже записанные вещи остаются и в Firestore, и в сторе,
+    // а вызывающему прокидываем `savedCount` — сколько реально записалось, чтобы он
+    // не отправил их повторно (иначе при ретрае получим дубли).
+    let saved = 0
+    try {
+      for (let i = 0; i < items.length; i += 25) {
+        const chunk = items.slice(i, i + 25)
+        const { ids } = await callDb('batchAdd', { col: 'wardrobe', items: chunk })
+        const added = chunk.map((it, j) => ({ ...it, id: ids[j] } as ClothingItem))
+        set((s) => ({ wardrobe: [...s.wardrobe, ...added] }))
+        saved += chunk.length
+      }
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Не удалось сохранить')
+      ;(err as Error & { savedCount?: number }).savedCount = saved
+      throw err
     }
-    set((s) => ({ wardrobe: [...s.wardrobe, ...added] }))
   },
 
   clearWardrobe: async () => {

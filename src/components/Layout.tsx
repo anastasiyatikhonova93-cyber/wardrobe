@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { NavBar } from './NavBar'
+import { ImportProgressBadge } from './ImportProgressBadge'
 import { useStore } from '../store'
 import { ArrowLeft } from 'lucide-react'
 
@@ -32,6 +33,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       )}
       <main className="max-w-lg mx-auto px-4 pt-6">{children}</main>
+      <ImportProgressBadge />
       <NavBar />
     </div>
   )
