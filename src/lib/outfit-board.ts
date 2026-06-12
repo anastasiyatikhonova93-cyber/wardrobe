@@ -1,6 +1,6 @@
 import type { ClothingItem, ShoppingItem, Outfit } from '../types'
 import { makeTransparent } from './transparent-image'
-import { computeBounds, getItemScale, ITEM_BASE_W, ITEM_ASPECT } from './outfit-layout'
+import { computeBounds, itemBoxFrac, buildItemLookup, CANVAS_ASPECT } from './outfit-layout'
 import { fitCanvasScale } from './board-layout'
 
 /**
@@ -24,6 +24,26 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   })
 }
 
+/** Серый плейсхолдер вещи без картинки — повторяет div-заглушку из `OutfitPreview`. */
+function drawPlaceholder(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  name: string | undefined,
+) {
+  const r = Math.min(8, w / 2, h / 2)
+  ctx.fillStyle = '#e4e4e7' // zinc-200
+  ctx.beginPath()
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r)
+  else ctx.rect(x, y, w, h) // фолбэк для старых iOS Safari без roundRect
+  ctx.fill()
+  ctx.fillStyle = '#a1a1aa' // zinc-400
+  ctx.font = `300 ${Math.round(Math.min(w, h) * 0.4)}px -apple-system, system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText((name ?? '?')[0] ?? '?', x + w / 2, y + h / 2)
+  ctx.textAlign = 'start' // вернуть дефолт для последующего текста
+}
+
 export interface RenderBoardOpts {
   title: string
   outfits: Outfit[]
@@ -36,7 +56,7 @@ export interface RenderBoardOpts {
  * белый фон, безопасный масштаб через fitCanvasScale (лимиты iOS Safari).
  */
 export async function renderOutfitBoardToPng({ title, outfits, wardrobe, shopping }: RenderBoardOpts): Promise<string> {
-  const allItems = [...wardrobe, ...shopping]
+  const byId = buildItemLookup([...wardrobe, ...shopping])
   const cols = boardColumns(outfits.length)
   const rows = Math.max(1, Math.ceil(outfits.length / cols))
 
@@ -44,7 +64,7 @@ export async function renderOutfitBoardToPng({ title, outfits, wardrobe, shoppin
   const PAD = 48
   const GAP = 32
   const CELL_W = 320
-  const CELL_H = Math.round(CELL_W / ITEM_ASPECT) // ячейка 3:4, как превью
+  const CELL_H = Math.round(CELL_W / CANVAS_ASPECT) // ячейка 3:4, как превью
   const TITLE_H = title.trim() ? 90 : PAD
 
   const width = PAD * 2 + cols * CELL_W + (cols - 1) * GAP
@@ -77,7 +97,23 @@ export async function renderOutfitBoardToPng({ title, outfits, wardrobe, shoppin
     const cy = TITLE_H + PAD + row * (CELL_H + GAP)
 
     const positions = outfit.itemPositions ?? []
-    const b = computeBounds(positions, allItems)
+
+    // Пред-проход: грузим обрезанные картинки и их реальные пропорции (как в превью),
+    // чтобы раскладка совпадала с экраном. Картинки независимы → грузим параллельно;
+    // порядок рисования (z-order) задаётся отдельным циклом по positions, не загрузкой.
+    const loaded = new Map<string, HTMLImageElement>()
+    await Promise.all(positions.map(async (pos) => {
+      const item = byId.get(pos.itemId)
+      if (!item?.imageUrl) return
+      const img = await loadImage(await makeTransparent(item.imageUrl))
+      if (img) loaded.set(pos.itemId, img)
+    }))
+    const aspectOf = (itemId: string) => {
+      const img = loaded.get(itemId)
+      return img ? (img.naturalWidth || 3) / (img.naturalHeight || 4) : CANVAS_ASPECT
+    }
+
+    const b = computeBounds(positions, byId, aspectOf)
     if (!b) continue
 
     // Та же вписывающая раскладка, что в OutfitPreview.
@@ -91,25 +127,24 @@ export async function renderOutfitBoardToPng({ title, outfits, wardrobe, shoppin
     const offsetY = (100 - bh * fit) / 2
 
     for (const pos of positions) {
-      const item = allItems.find((it) => it.id === pos.itemId)
-      if (!item?.imageUrl) continue
-      const url = await makeTransparent(item.imageUrl)
-      const img = await loadImage(url)
-      if (!img) continue
+      const item = byId.get(pos.itemId)
+      const img = loaded.get(pos.itemId)
 
-      const itemW = ITEM_BASE_W * getItemScale(pos.itemId, allItems)
-      // Бокс вещи в пикселях ячейки (как left/top/width % в превью).
+      const { hFrac, wFrac } = itemBoxFrac(item, pos.userScale, aspectOf(pos.itemId))
+      // Бокс вещи в пикселях ячейки (как left/top/width/height % в превью). Бокс уже
+      // в пропорциях картинки → рисуем её ровно в бокс, без доп. вписывания.
       const boxX = cx + ((pos.x - bx) * fit + offsetX) / 100 * CELL_W
       const boxY = cy + ((pos.y - by) * fit + offsetY) / 100 * CELL_H
-      const boxW = (itemW * fit) / 100 * CELL_W
-      const boxH = boxW / ITEM_ASPECT
-
-      // object-contain: вписываем картинку в бокс, сохраняя пропорции.
-      const ar = (img.naturalWidth || 3) / (img.naturalHeight || 4)
-      let drawW = boxW
-      let drawH = boxW / ar
-      if (drawH > boxH) { drawH = boxH; drawW = boxH * ar }
-      ctx.drawImage(img, boxX + (boxW - drawW) / 2, boxY + (boxH - drawH) / 2, drawW, drawH)
+      const boxW = wFrac * fit * CELL_W
+      const boxH = hFrac * fit * CELL_H
+      if (img) {
+        ctx.drawImage(img, boxX, boxY, boxW, boxH)
+      } else {
+        // Вещь без картинки: рисуем серый плейсхолдер с первой буквой имени — как в
+        // превью (`OutfitPreview`), иначе экспорт сместился бы относительно него
+        // (`computeBounds` резервирует бокс под такую вещь, а раньше цикл её пропускал).
+        drawPlaceholder(ctx, boxX, boxY, boxW, boxH, item?.name)
+      }
     }
   }
 

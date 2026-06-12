@@ -56,7 +56,14 @@ export interface OutfitItemPosition {
   itemId: string
   x: number
   y: number
-  scale: number
+  /** @deprecated старый ширина-масштаб по категории — хранил производное
+   *  CATEGORY_SCALE[category] (категориальный размер), а НЕ ручной множитель.
+   *  Раскладка теперь задаётся высотой по категории (CATEGORY_HEIGHT) × реальным
+   *  соотношением сторон фото; в userScale не мигрируется (см. docs/data-model.md).
+   *  Поле осталось в старых документах, но больше не читается. */
+  scale?: number
+  /** Ручной множитель размера поверх авто-высоты по категории (по умолчанию 1). */
+  userScale?: number
 }
 
 export interface Outfit {
@@ -126,17 +133,6 @@ export const DEFAULT_OUTFIT_CATEGORIES: Category[] = [
   { id: 'cold', name: 'Холод' },
   { id: 'evening', name: 'Вечернее' },
 ]
-
-export const CATEGORY_SCALE: Record<ClothingCategory, number> = {
-  tops: 1.0,
-  bottoms: 1.4,
-  dresses: 1.8,
-  outerwear: 1.7,
-  knitwear: 1.0,
-  shoes: 0.45,
-  bags: 0.7,
-  accessories: 0.35,
-}
 
 export const BODY_TYPE_LABELS: Record<BodyType, string> = {
   hourglass: 'Песочные часы',

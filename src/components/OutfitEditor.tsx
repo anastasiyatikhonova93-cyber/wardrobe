@@ -1,9 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { X, Plus, Trash2, Check, ArrowLeft, Loader2 } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { X, Plus, Trash2, Check, ArrowLeft, Loader2, Maximize2 } from 'lucide-react'
 import { useStore, useOutfitCategories } from '../store'
 import type { Outfit, OutfitItemPosition, Season, ClothingItem, ClothingCategory } from '../types'
-import { SEASON_LABELS, CATEGORY_LABELS, CATEGORY_SCALE } from '../types'
+import { SEASON_LABELS, CATEGORY_LABELS } from '../types'
 import { TransparentImg } from './TransparentImg'
+import { itemBoxFrac, buildItemLookup } from '../lib/outfit-layout'
+import { useAspectRatios } from '../lib/use-image-aspect'
 import { generateOutfitName } from '../ai'
 
 const ALL_SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter']
@@ -14,21 +16,22 @@ interface Props {
   onClose: () => void
 }
 
-function autoLayout(itemIds: string[], items: ClothingItem[]): OutfitItemPosition[] {
+/** Границы ручного множителя размера вещи на холсте. */
+const MIN_USER_SCALE = 0.4
+const MAX_USER_SCALE = 2.5
+const clampScale = (s: number) => Math.max(MIN_USER_SCALE, Math.min(MAX_USER_SCALE, s))
+
+function autoLayout(itemIds: string[]): OutfitItemPosition[] {
   const cols = 2
   const itemW = 25
   const gapX = (100 - cols * itemW) / (cols + 1)
   const gapY = 8
-  return itemIds.map((id, i) => {
-    const item = items.find((w) => w.id === id)
-    const scale = item ? (CATEGORY_SCALE[item.category] ?? 1) : 1
-    return {
-      itemId: id,
-      x: gapX + (i % cols) * (itemW + gapX),
-      y: 10 + Math.floor(i / cols) * (itemW * 1.33 + gapY),
-      scale,
-    }
-  })
+  return itemIds.map((id, i) => ({
+    itemId: id,
+    x: gapX + (i % cols) * (itemW + gapX),
+    y: 10 + Math.floor(i / cols) * (itemW * 1.33 + gapY),
+    userScale: 1,
+  }))
 }
 
 export function OutfitEditor({ outfit, onClose }: Props) {
@@ -59,24 +62,40 @@ export function OutfitEditor({ outfit, onClose }: Props) {
   const [itemIds, setItemIds] = useState<string[]>(outfit?.wardrobeItemIds ?? [])
   const [positions, setPositions] = useState<OutfitItemPosition[]>(() => {
     if (outfit?.itemPositions?.length) {
-      return outfit.itemPositions.map((p) => {
-        const item = wardrobe.find((w) => w.id === p.itemId)
-        const scale = item ? (CATEGORY_SCALE[item.category] ?? 1) : (p.scale ?? 1)
-        return { ...p, scale }
-      })
+      // Старое поле `scale` (ширина-масштаб по категории) игнорируем — размер теперь
+      // задаётся высотой по категории; читаем только ручной множитель userScale.
+      return outfit.itemPositions.map((p) => ({
+        itemId: p.itemId,
+        x: p.x,
+        y: p.y,
+        userScale: p.userScale ?? 1,
+      }))
     }
-    if (outfit?.wardrobeItemIds?.length) return autoLayout(outfit.wardrobeItemIds, wardrobe)
+    if (outfit?.wardrobeItemIds?.length) return autoLayout(outfit.wardrobeItemIds)
     return []
   })
   const [showPicker, setShowPicker] = useState(false)
   const [pickerFilter, setPickerFilter] = useState<ClothingCategory | 'all'>('all')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
+  const byId = useMemo(() => buildItemLookup(wardrobe), [wardrobe])
+  const aspectBySrc = useAspectRatios(positions.map((p) => byId.get(p.itemId)?.imageUrl))
+
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
     id: string
     offsetX: number
     offsetY: number
+    /** размеры бокса вещи в % холста — для клампа, чтобы вещь не уехала целиком за край */
+    wPct: number
+    hPct: number
+  } | null>(null)
+  const resizeRef = useRef<{
+    id: string
+    anchorX: number
+    anchorY: number
+    startUserScale: number
+    startDiag: number
   } | null>(null)
 
   useEffect(() => {
@@ -88,6 +107,12 @@ export function OutfitEditor({ outfit, onClose }: Props) {
     return canvasRef.current?.getBoundingClientRect() ?? null
   }, [])
 
+  function boxPct(pos: OutfitItemPosition) {
+    const item = byId.get(pos.itemId)
+    const { hFrac, wFrac } = itemBoxFrac(item, pos.userScale, aspectBySrc(item?.imageUrl))
+    return { wPct: wFrac * 100, hPct: hFrac * 100 }
+  }
+
   function handlePointerDown(e: React.PointerEvent, itemId: string) {
     const rect = getCanvasRect()
     if (!rect) return
@@ -96,11 +121,14 @@ export function OutfitEditor({ outfit, onClose }: Props) {
 
     const itemX = (pos.x / 100) * rect.width
     const itemY = (pos.y / 100) * rect.height
+    const { wPct, hPct } = boxPct(pos)
 
     dragRef.current = {
       id: itemId,
       offsetX: e.clientX - rect.left - itemX,
       offsetY: e.clientY - rect.top - itemY,
+      wPct,
+      hPct,
     }
 
     setPositions((prev) => {
@@ -117,15 +145,42 @@ export function OutfitEditor({ outfit, onClose }: Props) {
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
   }
 
+  function handleResizeDown(e: React.PointerEvent, itemId: string) {
+    e.stopPropagation()
+    const rect = getCanvasRect()
+    if (!rect) return
+    const pos = positions.find((p) => p.itemId === itemId)
+    if (!pos) return
+
+    const anchorX = rect.left + (pos.x / 100) * rect.width
+    const anchorY = rect.top + (pos.y / 100) * rect.height
+    const startDiag = Math.hypot(e.clientX - anchorX, e.clientY - anchorY) || 1
+    resizeRef.current = { id: itemId, anchorX, anchorY, startUserScale: pos.userScale ?? 1, startDiag }
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
   function handlePointerMove(e: React.PointerEvent) {
+    const rz = resizeRef.current
+    if (rz) {
+      const diag = Math.hypot(e.clientX - rz.anchorX, e.clientY - rz.anchorY)
+      const userScale = clampScale(rz.startUserScale * (diag / rz.startDiag))
+      setPositions((prev) => prev.map((p) => (p.itemId === rz.id ? { ...p, userScale } : p)))
+      return
+    }
+
     if (!dragRef.current) return
     const rect = getCanvasRect()
     if (!rect) return
 
     const rawX = e.clientX - rect.left - dragRef.current.offsetX
     const rawY = e.clientY - rect.top - dragRef.current.offsetY
-    const x = Math.max(0, Math.min(75, (rawX / rect.width) * 100))
-    const y = Math.max(0, Math.min(70, (rawY / rect.height) * 100))
+    // Держим на холсте хотя бы видимую часть бокса = min(размер, 30%): для маленького
+    // бокса это вся вещь (не уезжает вовсе), для большого после ресайза — 30% (и без
+    // инверсии границ, когда бокс шире/выше холста).
+    const visX = Math.min(dragRef.current.wPct, 30)
+    const visY = Math.min(dragRef.current.hPct, 30)
+    const x = Math.max(visX - dragRef.current.wPct, Math.min(100 - visX, (rawX / rect.width) * 100))
+    const y = Math.max(visY - dragRef.current.hPct, Math.min(100 - visY, (rawY / rect.height) * 100))
 
     setPositions((prev) =>
       prev.map((p) => (p.itemId === dragRef.current!.id ? { ...p, x, y } : p)),
@@ -134,6 +189,7 @@ export function OutfitEditor({ outfit, onClose }: Props) {
 
   function handlePointerUp() {
     dragRef.current = null
+    resizeRef.current = null
   }
 
   function addItem(item: ClothingItem) {
@@ -141,10 +197,9 @@ export function OutfitEditor({ outfit, onClose }: Props) {
     setItemIds((prev) => [...prev, item.id])
     const centerX = 35 + Math.random() * 10
     const centerY = 20 + Math.random() * 10
-    const scale = CATEGORY_SCALE[item.category] ?? 1
     setPositions((prev) => [
       ...prev,
-      { itemId: item.id, x: centerX, y: centerY, scale },
+      { itemId: item.id, x: centerX, y: centerY, userScale: 1 },
     ])
   }
 
@@ -313,9 +368,9 @@ export function OutfitEditor({ outfit, onClose }: Props) {
               </div>
             )}
             {positions.map((pos) => {
-              const item = wardrobe.find((w) => w.id === pos.itemId)
+              const item = byId.get(pos.itemId)
               if (!item) return null
-              const itemScale = CATEGORY_SCALE[item.category] ?? 1
+              const { hFrac, wFrac } = itemBoxFrac(item, pos.userScale, aspectBySrc(item.imageUrl))
               return (
                 <div
                   key={pos.itemId}
@@ -323,12 +378,13 @@ export function OutfitEditor({ outfit, onClose }: Props) {
                   style={{
                     left: `${pos.x}%`,
                     top: `${pos.y}%`,
-                    width: `${25 * itemScale}%`,
+                    width: `${wFrac * 100}%`,
+                    height: `${hFrac * 100}%`,
                     touchAction: 'none',
                   }}
                   onPointerDown={(e) => handlePointerDown(e, pos.itemId)}
                 >
-                  <div className="relative aspect-[3/4]">
+                  <div className="relative w-full h-full">
                     {item.imageUrl ? (
                       <TransparentImg
                         src={item.imageUrl}
@@ -346,10 +402,17 @@ export function OutfitEditor({ outfit, onClose }: Props) {
                         e.stopPropagation()
                         removeItem(pos.itemId)
                       }}
-                      className="absolute top-[10%] right-[10%] bg-white shadow-md rounded-full p-1 z-10"
+                      className="absolute top-1 right-1 bg-white shadow-md rounded-full p-1 z-10"
                     >
                       <X size={12} />
                     </button>
+                    {/* Маркер ресайза — тянуть за угол, чтобы менять размер вещи */}
+                    <div
+                      onPointerDown={(e) => handleResizeDown(e, pos.itemId)}
+                      className="absolute bottom-1 right-1 bg-white shadow-md rounded-full p-1 z-10 cursor-nwse-resize touch-none"
+                    >
+                      <Maximize2 size={12} />
+                    </div>
                   </div>
                 </div>
               )

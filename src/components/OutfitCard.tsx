@@ -1,9 +1,11 @@
+import { useMemo } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { ClothingItem, ShoppingItem, Outfit } from '../types'
 import { SEASON_LABELS } from '../types'
 import { useOutfitCategories } from '../store'
 import { TransparentImg } from './TransparentImg'
-import { computeBounds, getItemScale, ITEM_BASE_W } from '../lib/outfit-layout'
+import { computeBounds, itemBoxFrac, buildItemLookup } from '../lib/outfit-layout'
+import { useAspectRatios } from '../lib/use-image-aspect'
 
 interface Props {
   outfit: Outfit
@@ -14,9 +16,15 @@ interface Props {
 }
 
 export function OutfitPreview({ outfit, wardrobeItems, shoppingItems }: { outfit: Outfit; wardrobeItems: ClothingItem[]; shoppingItems: ShoppingItem[] }) {
-  const allItems = [...wardrobeItems, ...shoppingItems]
+  // Ссылки массивов из стора стабильны между несвязанными ре-рендерами → строим
+  // карту id→вещь один раз, а не на каждый рендер каждой карточки.
+  const byId = useMemo(() => buildItemLookup([...wardrobeItems, ...shoppingItems]), [wardrobeItems, shoppingItems])
   const positions = outfit.itemPositions ?? []
-  const bounds = computeBounds(positions, allItems)
+
+  const aspectBySrc = useAspectRatios(positions.map((p) => byId.get(p.itemId)?.imageUrl))
+  const aspectOf = (itemId: string) => aspectBySrc(byId.get(itemId)?.imageUrl)
+
+  const bounds = computeBounds(positions, byId, aspectOf)
 
   if (!bounds || !positions.length) return null
 
@@ -32,29 +40,30 @@ export function OutfitPreview({ outfit, wardrobeItems, shoppingItems }: { outfit
   return (
     <div className="relative w-full aspect-[3/4] overflow-hidden">
       {positions.map((pos) => {
-        const item = allItems.find((i) => i.id === pos.itemId)
+        const item = byId.get(pos.itemId)
         if (!item) return null
-        const itemScale = getItemScale(pos.itemId, allItems)
-        const itemW = ITEM_BASE_W * itemScale
+        const { hFrac, wFrac } = itemBoxFrac(item, pos.userScale, aspectOf(pos.itemId))
         return (
           <div
             key={pos.itemId}
-            className="absolute"
+            // Аспекты картинок догружаются асинхронно (`useAspectRatios` отдаёт фолбэк
+            // 3:4 до загрузки) → бокс может разок перескочить. Плавный переход смягчает
+            // этот скачок; в превью нет перетаскивания, так что анимация не мешает.
+            className="absolute transition-[left,top,width,height] duration-200 ease-out"
             style={{
               left: `${(pos.x - bx) * scale + offsetX}%`,
               top: `${(pos.y - by) * scale + offsetY}%`,
-              width: `${itemW * scale}%`,
+              width: `${wFrac * 100 * scale}%`,
+              height: `${hFrac * 100 * scale}%`,
             }}
           >
-            <div className="aspect-[3/4]">
-              {item.imageUrl ? (
-                <TransparentImg src={item.imageUrl} className="w-full h-full object-contain" />
-              ) : (
-                <div className="w-full h-full bg-zinc-200 rounded-lg flex items-center justify-center text-zinc-400 text-xs">
-                  {(item.name ?? '?')[0]}
-                </div>
-              )}
-            </div>
+            {item.imageUrl ? (
+              <TransparentImg src={item.imageUrl} className="w-full h-full object-contain" />
+            ) : (
+              <div className="w-full h-full bg-zinc-200 rounded-lg flex items-center justify-center text-zinc-400 text-xs">
+                {(item.name ?? '?')[0]}
+              </div>
+            )}
           </div>
         )
       })}
