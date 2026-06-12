@@ -37,7 +37,9 @@ function drawPlaceholder(
   else ctx.rect(x, y, w, h) // фолбэк для старых iOS Safari без roundRect
   ctx.fill()
   ctx.fillStyle = '#a1a1aa' // zinc-400
-  ctx.font = `300 ${Math.round(Math.min(w, h) * 0.4)}px -apple-system, system-ui, sans-serif`
+  // max(1,…): у крошечного бокса round(…*0.4) даёт 0px, а canvas «0px» игнорирует и
+  // откатывается на дефолтный ~10px шрифт → буква вылезла бы за бокс в экспорте.
+  ctx.font = `300 ${Math.max(1, Math.round(Math.min(w, h) * 0.4))}px -apple-system, system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText((name ?? '?')[0] ?? '?', x + w / 2, y + h / 2)
@@ -139,12 +141,15 @@ export async function renderOutfitBoardToPng({ title, outfits, wardrobe, shoppin
       const boxH = hFrac * fit * CELL_H
       if (img) {
         ctx.drawImage(img, boxX, boxY, boxW, boxH)
-      } else {
-        // Вещь без картинки: рисуем серый плейсхолдер с первой буквой имени — как в
-        // превью (`OutfitPreview`), иначе экспорт сместился бы относительно него
+      } else if (item) {
+        // Вещь есть, но без картинки: рисуем серый плейсхолдер с первой буквой имени —
+        // как в превью (`OutfitPreview`), иначе экспорт сместился бы относительно него
         // (`computeBounds` резервирует бокс под такую вещь, а раньше цикл её пропускал).
-        drawPlaceholder(ctx, boxX, boxY, boxW, boxH, item?.name)
+        drawPlaceholder(ctx, boxX, boxY, boxW, boxH, item.name)
       }
+      // else: вещь удалена из гардероба (нет в byId) — `OutfitPreview` тоже ничего не
+      // рисует (`if (!item) return null`); бокс всё равно зарезервирован в computeBounds,
+      // так что центрирование превью и PNG совпадает.
     }
   }
 
