@@ -37,7 +37,10 @@ const PROMPTS: Record<string, string> = {
   bags:
     'Professional e-commerce product photo of this bag. Remove the hook, hanger, hand, ' +
     'wall and all background. Arrange the bag facing front with its strap laid out ' +
-    'neatly and symmetrically.' + COMMON,
+    'neatly and symmetrically. Keep the same straps and handles as in the original — the ' +
+    'same number, each one whole and intact as a single continuous piece; do not add an ' +
+    'extra handle or strap that is not there, and do not tear, split, duplicate or ' +
+    'otherwise modify them.' + COMMON,
   accessory:
     'Professional e-commerce product photo of this accessory (jewelry/belt/etc). ' +
     'Remove any packaging card, price tag, hand, fingers, clothing and all background. ' +
