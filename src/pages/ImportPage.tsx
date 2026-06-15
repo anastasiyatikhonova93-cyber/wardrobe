@@ -283,8 +283,19 @@ function ReviewStep({
         </div>
       )}
       {errored.length > 0 && (
-        <div className="p-3 rounded-xl bg-red-50 text-xs text-red-600">
-          {errored.length} фото не удалось обработать
+        <div className="p-3 rounded-xl bg-red-50 text-xs text-red-600 space-y-2">
+          <p className="font-medium">{errored.length} фото не удалось обработать</p>
+          {/* Показываем реальный текст ошибки по каждому файлу — иначе причину
+              сбоя не видно и не понять, что чинить. */}
+          <ul className="space-y-1">
+            {errored.map((item) => (
+              <li key={item.id} className="flex gap-2 text-[11px] text-red-500/90">
+                <span className="truncate max-w-[40%] shrink-0">{item.file.name}</span>
+                <span className="text-red-400">—</span>
+                <span className="min-w-0 break-words">{item.error ?? 'неизвестная ошибка'}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
