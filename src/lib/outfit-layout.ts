@@ -17,7 +17,7 @@ export const CATEGORY_HEIGHT: Record<ClothingCategory, number> = {
   knitwear: 0.33,
   tops: 0.31,
   bags: 0.15,
-  shoes: 0.13,
+  shoes: 0.10,
   accessories: 0.13,
 }
 
