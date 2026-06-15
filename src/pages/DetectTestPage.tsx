@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Upload, AlertCircle, X, Check } from 'lucide-react'
-import { detectItems, cropItem } from '../lib/detect-items'
+import { detectItems, cropItem, cutoutWithMask } from '../lib/detect-items'
 import type { DetectedItem } from '../lib/detect-items'
 import { useAuth } from '../lib/auth'
 import { useStore } from '../store'
-import { cleanupBest, cleanupPhoto } from '../lib/photo-cleanup'
 import { uploadPhoto } from '../lib/storage'
 import { CategorySelect } from '../components/CategorySelect'
 import { SeasonPicker } from '../components/SeasonPicker'
 import type { ClothingCategory, ClothingItem, Season } from '../types'
 
 // Мульти-распознавание: одно фото (зеркальное селфи / фото образа) → несколько
-// отдельных вещей. Сначала Gemini находит рамки (см. api/detect.ts), вырезаем
-// каждую вещь, СРАЗУ приводим её к «гардеробному» виду (вырезаем фон —
-// cleanupBest, фолбэк cleanupPhoto), показываем готовые карточки, затем —
-// сохранение в гардероб. Роут /detect-test.
+// отдельных вещей. Gemini возвращает по каждой вещи сегментационную маску
+// (см. api/detect.ts), по маске вырезаем ИМЕННО этот предмет в прозрачный PNG
+// (cutoutWithMask) — точнее, чем рамка + локальное вырезание фона, особенно когда
+// вещи перекрываются. Показываем карточки, затем — сохранение в гардероб.
+// Роут /detect-test.
 
 const CATEGORY_RU: Record<string, string> = {
   tops: 'Верх',
@@ -32,10 +32,11 @@ const CATEGORY_RU: Record<string, string> = {
 interface ReviewRow {
   id: number
   box: DetectedItem['box']
-  crop: string // сырой прямоугольный вырез из фото
-  processedUrl: string | null // вещь на прозрачном фоне (после cleanup)
-  processing: boolean // идёт обработка фона
-  procError: boolean // обработка не удалась — останется сырой кроп
+  mask: string | null // сегментационная маска (data-URL) или null
+  crop: string // сырой прямоугольный вырез из фото (фолбэк/плейсхолдер)
+  processedUrl: string | null // вещь, вырезанная по маске (прозрачный PNG)
+  processing: boolean // идёт вырезание
+  maskMissing: boolean // маски не было — вырезали прямоугольной рамкой
   name: string
   category: ClothingCategory
   color: string
@@ -55,15 +56,6 @@ function loadImg(src: string): Promise<HTMLImageElement> {
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const res = await fetch(dataUrl)
   return res.blob()
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader()
-    fr.onload = () => resolve(fr.result as string)
-    fr.onerror = () => reject(new Error('Не удалось прочитать изображение'))
-    fr.readAsDataURL(blob)
-  })
 }
 
 export function DetectTestPage() {
@@ -120,10 +112,11 @@ export function DetectTestPage() {
       const initial: ReviewRow[] = found.map((item, i) => ({
         id: i,
         box: item.box,
+        mask: item.mask,
         crop: cropItem(img, item.box),
         processedUrl: null,
         processing: true,
-        procError: false,
+        maskMissing: false,
         name: item.label,
         category: item.category,
         color: item.color,
@@ -133,25 +126,21 @@ export function DetectTestPage() {
       setRows(initial)
       setBusy(false)
 
-      // Сразу приводим каждую вещь к гардеробному виду: AI-ретушь (Gemini), при
-      // сбое/отсутствии биллинга — локальное вырезание фона + цветокоррекция.
-      // Последовательно — модель вырезания фона и так сериализована (gate).
+      // Вырезаем каждую вещь по её маске (быстро, без сети). Если маски нет —
+      // фолбэк на прямоугольный кроп рамки, помечаем maskMissing.
       for (const row of initial) {
         if (runId.current !== myRun) return
+        if (!row.mask) {
+          patchRow(row.id, { processedUrl: row.crop, processing: false, maskMissing: true })
+          continue
+        }
         try {
-          const blob = await dataUrlToBlob(row.crop)
-          let processed: Blob
-          try {
-            processed = await cleanupBest(blob, row.category)
-          } catch {
-            processed = await cleanupPhoto(blob)
-          }
-          const url = await blobToDataUrl(processed)
+          const url = await cutoutWithMask(img, row.box, row.mask)
           if (runId.current !== myRun) return
           patchRow(row.id, { processedUrl: url, processing: false })
         } catch {
           if (runId.current !== myRun) return
-          patchRow(row.id, { processing: false, procError: true })
+          patchRow(row.id, { processedUrl: row.crop, processing: false, maskMissing: true })
         }
       }
     } catch (e) {
@@ -390,8 +379,8 @@ function ReviewCard({
       />
 
       <div className="flex items-center justify-between">
-        {row.procError ? (
-          <span className="text-[11px] text-amber-600">Фон не обработан — фото как есть</span>
+        {row.maskMissing ? (
+          <span className="text-[11px] text-amber-600">Без маски — вырезано рамкой</span>
         ) : (
           <span />
         )}
