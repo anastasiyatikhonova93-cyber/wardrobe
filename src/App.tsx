@@ -11,6 +11,7 @@ import { ProfilePage } from './pages/ProfilePage'
 import { ImportPage } from './pages/ImportPage'
 import { SeedPage } from './pages/SeedPage'
 import { FixPhotosPage } from './pages/FixPhotosPage'
+import { DetectTestPage } from './pages/DetectTestPage'
 import { InvitePage, getPendingInvite, clearPendingInvite } from './pages/InvitePage'
 import { SharedWardrobesPage } from './pages/SharedWardrobesPage'
 import { Loader2, RotateCw, WifiOff } from 'lucide-react'
@@ -54,6 +55,13 @@ function AppShell() {
         <Route path="/invite/:token" element={<InvitePage />} />
       </Routes>
     )
+  }
+
+  // Прототип мульти-распознавания — песочница без авторизации: ничего не
+  // сохраняет, uid не нужен, и так работает на preview-домене без добавления
+  // его в Firebase authorized domains.
+  if (location.pathname === '/detect-test') {
+    return <DetectTestPage />
   }
 
   if (authLoading || (user && dataLoading)) {

@@ -44,6 +44,19 @@
 - `callGeminiWithRetry`: до 3 попыток, ретрай на `429/500/503` (перегрузка
   бесплатного тарифа), таймаут 30 с.
 
+### `api/detect.ts` — мульти-распознавание вещей на одном фото (vision)
+
+- Модель `gemini-2.5-flash`, `responseMimeType: application/json` (тот же бесплатный
+  vision-тариф, что `classify.ts`, биллинг не нужен).
+- Вход: `{ image }` (data-URL/base64) **или** `{ imageUrl }`.
+- Выход: `{ items: [{ label, category, color, seasons, box_2d }] }`. `box_2d` —
+  рамка вещи `[ymin, xmin, ymax, xmax]` в нормировке `0..1000` (документированный
+  формат Gemini, origin — верхний левый угол). Клиент (`src/lib/detect-items.ts`)
+  переводит в `0..1` и вырезает каждую вещь.
+- Промт жёстко требует выделять **только вещи на человеке** и игнорировать раму
+  зеркала/мебель/декор/фон (на зеркальных селфи рама зеркала иначе ловится как
+  «сумка»/«обувь»). `callGeminiWithRetry`: ретрай на `429/500/503`, таймаут 30 с.
+
 ### `api/clean-image.ts` — AI-ретушь фото
 
 См. подробности в [photo-pipeline.md](photo-pipeline.md). Кратко: модель
@@ -63,6 +76,6 @@
 | Ключ | Где | Назначение |
 | --- | --- | --- |
 | `VITE_LLM_API_KEY` | опц., клиент | llm7.io (фиктивный, можно не задавать) |
-| `GEMINI_API_KEY` | Vercel env, сервер | Gemini vision + image-gen |
+| `GEMINI_API_KEY` | Vercel env, сервер | Gemini vision (classify/detect) + image-gen |
 
 Подробнее про окружение — в [deployment.md](deployment.md).

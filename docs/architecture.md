@@ -75,10 +75,12 @@ signIn, signOut }` через контекст (`useAuth`).
 ## Роутинг
 
 `react-router-dom` (BrowserRouter). Роуты: `/` (образы), `/wardrobe`, `/shopping`,
-`/profile`, `/import`, `/seed`, `/fix-photos`, `/shared`, `/invite/:token`.
-`/invite/:token` обрабатывается отдельной веткой `AppShell` (своя логика
-auth/loading). SPA-роутинг на проде обеспечивает `vercel.json` (рерайт всех
-не-`/api/` путей на `/`).
+`/profile`, `/import`, `/seed`, `/fix-photos`, `/shared`, `/invite/:token`,
+`/detect-test`. `/invite/:token` и `/detect-test` обрабатываются отдельными
+ветками `AppShell` (своя логика): `/detect-test` рендерится **до auth-гейта**
+(публичная страница мульти-распознавания, см. [photo-pipeline.md](photo-pipeline.md);
+сохранение в гардероб требует входа). SPA-роутинг на проде обеспечивает
+`vercel.json` (рерайт всех не-`/api/` путей на `/`).
 
 ## Совместный доступ — отключён
 
@@ -96,6 +98,7 @@ Vercel-функции на «голых» Node `http`-хендлерах (`Incom
 | --- | --- | --- |
 | `db.ts` | CRUD-прокси к Firestore (admin SDK) | этот файл |
 | `classify.ts` | Распознавание вещи по фото/URL (Gemini vision) | [ai.md](ai.md) |
+| `detect.ts` | Мульти-распознавание: список вещей с рамками на одном фото (Gemini vision) | [photo-pipeline.md](photo-pipeline.md) |
 | `clean-image.ts` | AI-ретушь фото на чистый фон (Gemini image-gen) | [photo-pipeline.md](photo-pipeline.md) |
 | `og-image.ts` | Извлечение картинки товара по ссылке (microlink / og:image) | [ai.md](ai.md) |
 
