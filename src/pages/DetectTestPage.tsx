@@ -13,7 +13,8 @@ import type { ClothingCategory, ClothingItem, Season } from '../types'
 
 // Мульти-распознавание: одно фото (зеркальное селфи / фото образа) → несколько
 // отдельных вещей. Сначала Gemini находит рамки (см. api/detect.ts), вырезаем
-// каждую вещь, показываем редактируемые карточки, затем — обработка фона +
+// каждую вещь, СРАЗУ приводим её к «гардеробному» виду (вырезаем фон —
+// cleanupBest, фолбэк cleanupPhoto), показываем готовые карточки, затем —
 // сохранение в гардероб. Роут /detect-test.
 
 const CATEGORY_RU: Record<string, string> = {
@@ -27,11 +28,14 @@ const CATEGORY_RU: Record<string, string> = {
   accessories: 'Аксессуары',
 }
 
-// Одна найденная вещь в режиме проверки: вырезанный кроп + редактируемые поля.
+// Одна найденная вещь: сырой кроп + обработанная картинка + редактируемые поля.
 interface ReviewRow {
   id: number
-  crop: string
   box: DetectedItem['box']
+  crop: string // сырой прямоугольный вырез из фото
+  processedUrl: string | null // вещь на прозрачном фоне (после cleanup)
+  processing: boolean // идёт обработка фона
+  procError: boolean // обработка не удалась — останется сырой кроп
   name: string
   category: ClothingCategory
   color: string
@@ -51,6 +55,15 @@ function loadImg(src: string): Promise<HTMLImageElement> {
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const res = await fetch(dataUrl)
   return res.blob()
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(fr.result as string)
+    fr.onerror = () => reject(new Error('Не удалось прочитать изображение'))
+    fr.readAsDataURL(blob)
+  })
 }
 
 export function DetectTestPage() {
@@ -79,6 +92,10 @@ export function DetectTestPage() {
     if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current)
   }, [])
 
+  function patchRow(id: number, patch: Partial<ReviewRow>) {
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  }
+
   async function onFile(file: File) {
     const myRun = ++runId.current
     setBusy(true)
@@ -100,39 +117,65 @@ export function DetectTestPage() {
       // Кропаем каждую вещь из оригинала (не из ужатой копии — качество выше).
       const img = await loadImg(objUrl)
       if (runId.current !== myRun) return
-      setRows(
-        found.map((item, i) => ({
-          id: i,
-          crop: cropItem(img, item.box),
-          box: item.box,
-          name: item.label,
-          category: item.category,
-          color: item.color,
-          seasons: item.seasons,
-          excluded: false,
-        })),
-      )
+      const initial: ReviewRow[] = found.map((item, i) => ({
+        id: i,
+        box: item.box,
+        crop: cropItem(img, item.box),
+        processedUrl: null,
+        processing: true,
+        procError: false,
+        name: item.label,
+        category: item.category,
+        color: item.color,
+        seasons: item.seasons,
+        excluded: false,
+      }))
+      setRows(initial)
+      setBusy(false)
+
+      // Сразу приводим каждую вещь к гардеробному виду: AI-ретушь (Gemini), при
+      // сбое/отсутствии биллинга — локальное вырезание фона + цветокоррекция.
+      // Последовательно — модель вырезания фона и так сериализована (gate).
+      for (const row of initial) {
+        if (runId.current !== myRun) return
+        try {
+          const blob = await dataUrlToBlob(row.crop)
+          let processed: Blob
+          try {
+            processed = await cleanupBest(blob, row.category)
+          } catch {
+            processed = await cleanupPhoto(blob)
+          }
+          const url = await blobToDataUrl(processed)
+          if (runId.current !== myRun) return
+          patchRow(row.id, { processedUrl: url, processing: false })
+        } catch {
+          if (runId.current !== myRun) return
+          patchRow(row.id, { processing: false, procError: true })
+        }
+      }
     } catch (e) {
       if (runId.current !== myRun) return
       setError(e instanceof Error ? e.message : 'Не удалось распознать')
-    } finally {
-      if (runId.current === myRun) setBusy(false)
+      setBusy(false)
     }
   }
 
-  function patchRow(id: number, patch: Partial<ReviewRow>) {
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)))
-  }
-
-  const keepCount = rows.filter((r) => !r.excluded).length
+  const keep = rows.filter((r) => !r.excluded)
+  const keepCount = keep.length
+  const processingCount = rows.filter((r) => r.processing).length
+  const processingActive = processingCount > 0
 
   async function save() {
     if (!user) {
       setSaveError('Войдите в аккаунт, чтобы сохранить вещи в гардероб.')
       return
     }
-    const keep = rows.filter((r) => !r.excluded)
     if (keep.length === 0) return
+    if (keep.some((r) => r.processing)) {
+      setSaveError('Идёт обработка фото — дождитесь её окончания.')
+      return
+    }
 
     setSaving(true)
     setSaveError(null)
@@ -140,16 +183,10 @@ export function DetectTestPage() {
     try {
       const clothing: Omit<ClothingItem, 'id'>[] = []
       for (const r of keep) {
-        // Обработка фона у каждой вещи отдельно: AI-ретушь (Gemini), при сбое/
-        // отсутствии биллинга — локальное вырезание фона + цветокоррекция.
-        const blob = await dataUrlToBlob(r.crop)
-        let processed: Blob
-        try {
-          processed = await cleanupBest(blob, r.category)
-        } catch {
-          processed = await cleanupPhoto(blob)
-        }
-        const imageUrl = await uploadPhoto(processed, user.uid)
+        // Фото уже обработано на этапе review — просто заливаем готовое
+        // (если обработка не удалась, фолбэк — сырой кроп).
+        const blob = await dataUrlToBlob(r.processedUrl ?? r.crop)
+        const imageUrl = await uploadPhoto(blob, user.uid)
         clothing.push({
           name: r.name || CATEGORY_RU[r.category] || r.category,
           category: r.category,
@@ -174,7 +211,7 @@ export function DetectTestPage() {
         <h1 className="text-xl font-semibold">Распознать вещи на фото</h1>
         <p className="text-sm text-zinc-500 mt-1">
           Загрузите зеркальное селфи или фото образа — найдём на нём отдельные вещи,
-          а вы проверите карточки и добавите нужные в гардероб.
+          вырежем фон и подготовим карточки, а вы проверите и добавите нужное в гардероб.
         </p>
       </div>
 
@@ -192,7 +229,7 @@ export function DetectTestPage() {
         />
         <button
           onClick={() => fileRef.current?.click()}
-          disabled={busy || saving}
+          disabled={busy || saving || processingActive}
           className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
@@ -245,9 +282,18 @@ export function DetectTestPage() {
           {/* Карточки найденных вещей — редактируемые перед сохранением */}
           {rows.length > 0 && (
             <div className="space-y-4">
-              <div className="text-xs font-medium text-zinc-500">
-                Проверьте вещи и уберите лишнее (например, если рамка попала на фон)
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-zinc-500">
+                  Проверьте вещи и уберите лишнее (например, если рамка попала на фон)
+                </span>
+                {processingActive && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400 shrink-0">
+                    <Loader2 size={12} className="animate-spin" />
+                    Обрабатываю фото · {rows.length - processingCount} из {rows.length}
+                  </span>
+                )}
               </div>
+
               {rows.map((r) => (
                 <ReviewCard key={r.id} row={r} onPatch={patchRow} />
               ))}
@@ -261,7 +307,7 @@ export function DetectTestPage() {
 
               <button
                 onClick={save}
-                disabled={saving || keepCount === 0}
+                disabled={saving || processingActive || keepCount === 0}
                 className="w-full py-3 rounded-full bg-black text-white text-sm font-medium disabled:opacity-30 transition-opacity"
               >
                 {saving ? (
@@ -271,6 +317,8 @@ export function DetectTestPage() {
                       ? `Сохраняю ${saveProgress.done} из ${saveProgress.total}…`
                       : 'Сохраняю…'}
                   </span>
+                ) : processingActive ? (
+                  'Готовлю фото…'
                 ) : (
                   `Добавить в гардероб (${keepCount})`
                 )}
@@ -296,6 +344,9 @@ function ReviewCard({
   row: ReviewRow
   onPatch: (id: number, patch: Partial<ReviewRow>) => void
 }) {
+  // Пока идёт обработка — показываем сырой кроп с оверлеем-спиннером; как
+  // только готово — заменяем на вещь на прозрачном фоне.
+  const preview = row.processedUrl ?? row.crop
   return (
     <div
       className={`rounded-2xl border p-3 space-y-3 transition-opacity ${
@@ -303,9 +354,14 @@ function ReviewCard({
       }`}
     >
       <div className="flex gap-3">
-        {/* Вырезанная вещь */}
-        <div className="w-20 h-24 rounded-xl overflow-hidden bg-zinc-50 flex-shrink-0 flex items-center justify-center">
-          <img src={row.crop} alt="" className="max-w-full max-h-full object-contain" />
+        {/* Картинка вещи (обработанная) */}
+        <div className="relative w-20 h-24 rounded-xl overflow-hidden bg-zinc-50 flex-shrink-0 flex items-center justify-center">
+          <img src={preview} alt="" className="max-w-full max-h-full object-contain" />
+          {row.processing && (
+            <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+              <Loader2 size={18} className="animate-spin text-zinc-500" />
+            </div>
+          )}
         </div>
 
         <div className="flex-1 space-y-2 min-w-0">
@@ -333,7 +389,12 @@ function ReviewCard({
         onChange={(seasons) => onPatch(row.id, { seasons })}
       />
 
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between">
+        {row.procError ? (
+          <span className="text-[11px] text-amber-600">Фон не обработан — фото как есть</span>
+        ) : (
+          <span />
+        )}
         <button
           onClick={() => onPatch(row.id, { excluded: !row.excluded })}
           className="inline-flex items-center gap-1 text-[11px] text-zinc-400 underline underline-offset-2"
