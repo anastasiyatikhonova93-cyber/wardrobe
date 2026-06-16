@@ -4,24 +4,40 @@ import type { ClothingCategory, ClothingItem, ShoppingItem, Outfit } from '../ty
 export const CANVAS_ASPECT = 3 / 4
 
 /**
- * Целевая высота вещи как доля высоты холста. Источник правды о взаимных размерах:
- * платья/верхняя одежда крупнее, обувь/аксессуары мельче. Пропорции соотносятся с
- * `ROW_HEIGHT` доски всего гардероба (`board-layout.ts`). Ширина вещи берётся из
- * реального соотношения сторон обрезанной картинки, а не из фиксированного бокса —
- * поэтому «лежачая» обувь больше не схлопывается в полоску.
+ * Целевая ПЛОЩАДЬ вещи как доля площади холста (в единицах wFrac×hFrac, где wFrac
+ * нормирована к ширине холста, hFrac — к высоте). Источник правды о взаимных размерах:
+ * платья/верхняя одежда крупнее, обувь/аксессуары мельче.
+ *
+ * Почему площадь, а не высота: размер вещи воспринимается по визуальной массе, а не
+ * по одной стороне. Высота-по-категории не устойчива к разбросу пропорций фото —
+ * широко снятую вещь (топ «крестом», обувь сбоку) раздувало по ширине: топ выходил
+ * гигантским, а обувь — шире штанов. При фиксированной площади ширина и высота
+ * выводятся из аспекта так, что масса вещи постоянна для категории независимо от
+ * того, как сфотографировали. Значения ≈ квадрату прежних высот (для фото с «нормальным»
+ * аспектом 3:4 размер почти не меняется), сумки чуть крупнее, чтобы не терялись.
  */
-export const CATEGORY_HEIGHT: Record<ClothingCategory, number> = {
-  dresses: 0.52,
-  outerwear: 0.46,
-  bottoms: 0.36,
-  knitwear: 0.33,
-  tops: 0.31,
-  bags: 0.15,
-  shoes: 0.10,
-  accessories: 0.13,
+export const CATEGORY_AREA: Record<ClothingCategory, number> = {
+  dresses: 0.25,
+  outerwear: 0.21,
+  bottoms: 0.135,
+  knitwear: 0.105,
+  tops: 0.095,
+  bags: 0.030,
+  shoes: 0.011,
+  accessories: 0.017,
 }
 
-const DEFAULT_HEIGHT = 0.31
+const DEFAULT_AREA = 0.095
+
+/** Границы аспекта для раскладки: страхуют от кривого bbox после вырезания фона,
+ *  чтобы патологически вытянутая картинка не раздулась по одной стороне. */
+const MIN_ASPECT = 0.3
+const MAX_ASPECT = 3.2
+/** Потолок размера вещи (доля холста) по каждой стороне: даже очень узкое платье или
+ *  очень широкая вещь не должны занимать почти весь холст / вылезать за край. Кап
+ *  применяется к обеим сторонам единым коэффициентом, поэтому аспект сохраняется. */
+const MAX_H_FRAC = 0.62
+const MAX_W_FRAC = 0.9
 
 /** Карта вещей по id — чтобы не сканировать массив `.find`'ом на каждую позицию образа. */
 export type ItemLookup = Map<string, ClothingItem | ShoppingItem>
@@ -30,25 +46,27 @@ export function buildItemLookup(items: (ClothingItem | ShoppingItem)[]): ItemLoo
   return new Map(items.map((i) => [i.id, i]))
 }
 
-/** Высота вещи (доля высоты холста) = база по категории × ручной множитель. */
-export function getItemHeight(item: ClothingItem | ShoppingItem | undefined, userScale: number | undefined): number {
-  const base = item ? (CATEGORY_HEIGHT[item.category] ?? DEFAULT_HEIGHT) : DEFAULT_HEIGHT
-  return base * (userScale ?? 1)
-}
-
 /**
- * Размеры бокса вещи в долях холста: высота — по категории, ширина — из реального
- * соотношения сторон `aspect` (= natW/natH обрезанной картинки). `wFrac` нормирована
- * к ширине холста (поэтому делим на CANVAS_ASPECT), `hFrac` — к высоте холста.
+ * Размеры бокса вещи в долях холста из целевой площади категории и реального аспекта
+ * `aspect` (= natW/natH обрезанной картинки). При площади S и аспекте a (в единицах
+ * холста a' = a / CANVAS_ASPECT): hFrac = √(S / a'), wFrac = √(S · a'), их произведение
+ * = S. Затем единый кап под потолки сторон (сохраняет аспект). `userScale` — линейный
+ * ручной множитель поверх капа (площадь меняется как userScale², но перетаскивание-
+ * ресайз остаётся линейным по видимой стороне).
  */
 export function itemBoxFrac(
   item: ClothingItem | ShoppingItem | undefined,
   userScale: number | undefined,
   aspect: number,
 ): { hFrac: number; wFrac: number } {
-  const hFrac = getItemHeight(item, userScale)
-  const wFrac = (hFrac * aspect) / CANVAS_ASPECT
-  return { hFrac, wFrac }
+  const area = item ? (CATEGORY_AREA[item.category] ?? DEFAULT_AREA) : DEFAULT_AREA
+  const a = Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, aspect)) / CANVAS_ASPECT
+  const h = Math.sqrt(area / a)
+  const w = h * a
+  // Кап под потолки обеих сторон единым коэффициентом → аспект сохраняется.
+  const fit = Math.min(1, MAX_H_FRAC / h, MAX_W_FRAC / w)
+  const scale = (userScale ?? 1) * fit
+  return { hFrac: h * scale, wFrac: w * scale }
 }
 
 /**
