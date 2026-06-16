@@ -1,9 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 
-// Сегментация с масками отвечает дольше обычной классификации — поднимаем лимит
-// длительности функции (по умолчанию Vercel может оборвать раньше).
-export const maxDuration = 60
-
 interface Res extends ServerResponse {
   status: (code: number) => Res
   json: (data: unknown) => void
@@ -15,10 +11,8 @@ interface Res extends ServerResponse {
 const GEMINI_MODEL = 'gemini-2.5-flash'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
-// Просим СЕГМЕНТАЦИОННЫЕ МАСКИ по каждой вещи (а не только рамки): на плотном
-// зеркальном селфи рамки перекрываются и захватывают соседей, а маска вырезает
-// именно нужный предмет. Формат — документированный для Gemini 2.5: box_2d
-// [ymin, xmin, ymax, xmax] 0..1000 + mask (PNG-маска внутри рамки, base64/data-URL).
+// Просим список вещей с рамками. Формат box_2d у Gemini — [ymin, xmin, ymax, xmax],
+// нормировка 0..1000 (origin — верхний левый угол). Это документированный формат.
 const PROMPT = `На фото человек (часто это зеркальное селфи) или одежда на вешалке.
 Найди КАЖДЫЙ отдельный предмет одежды, обувь и аксессуары, которые НАДЕТЫ на
 человеке или которые он держит (например: рубашка, джинсы, кроссовки, сумка,
@@ -33,19 +27,20 @@ const PROMPT = `На фото человек (часто это зеркальн
 - Если сомневаешься, предмет это гардероба на человеке или элемент обстановки —
   НЕ включай его.
 
-Для КАЖДОГО предмета верни его сегментационную маску. Ответь JSON-массивом, по
-одному объекту на предмет, с ключами:
-- "box_2d": рамка [ymin, xmin, ymax, xmax] в нормировке 0..1000 (начало координат —
-  верхний левый угол)
-- "mask": сегментационная маска предмета ВНУТРИ его рамки в виде data URL PNG
-  (белое — предмет, чёрное — всё остальное)
-- "label": краткое название на русском, например: Голубые джинсы прямого кроя
-- "category": одна из: tops, bottoms, dresses, outerwear, knitwear, shoes, bags, accessories
-- "color": цвет на русском одним-двумя словами
-- "seasons": сезоны из spring, summer, autumn, winter; для всесезонных вещей все четыре
+Ответь СТРОГО JSON-массивом, по одному объекту на предмет:
+[
+  {
+    "label": "краткое название на русском, например: Голубые джинсы прямого кроя",
+    "category": "одна из: tops, bottoms, dresses, outerwear, knitwear, shoes, bags, accessories",
+    "color": "цвет на русском одним-двумя словами",
+    "seasons": ["сезоны, для которых вещь подходит, из: spring, summer, autumn, winter; для всесезонных вещей перечисли все четыре"],
+    "box_2d": [ymin, xmin, ymax, xmax]
+  }
+]
 
+box_2d — рамка предмета в нормировке 0..1000 (верхний левый угол — начало координат).
 Если предмет частично скрыт — выдели видимую часть. Не дублируй один предмет
-несколькими записями.`
+несколькими рамками.`
 
 export default async function handler(req: IncomingMessage, res: Res) {
   if (req.method !== 'POST') {
@@ -73,13 +68,7 @@ export default async function handler(req: IncomingMessage, res: Res) {
           ],
         },
       ],
-      // maxOutputTokens высокий: маски (base64-PNG по каждой вещи) объёмные, на
-      // дефолтном лимите JSON обрезается и не парсится.
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-        maxOutputTokens: 65536,
-      },
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
     })
 
     const gemini = await callGeminiWithRetry(reqBody, apiKey)
@@ -114,8 +103,7 @@ async function callGeminiWithRetry(
     const res = await fetch(GEMINI_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      // Сегментация с масками отвечает дольше обычной классификации — даём 60 с.
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(30000),
       body: reqBody,
     })
     if (res.ok) return { ok: true, json: await res.json() }
