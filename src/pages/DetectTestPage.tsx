@@ -36,6 +36,7 @@ interface ReviewRow {
   processedUrl: string | null // вещь на прозрачном фоне (после cleanup)
   processing: boolean // идёт обработка фона
   procError: boolean // обработка не удалась — останется сырой кроп
+  useRaw: boolean // показать/сохранить сырой кроп вместо вырезанного (если автокроп кривой)
   name: string
   category: ClothingCategory
   color: string
@@ -124,6 +125,7 @@ export function DetectTestPage() {
         processedUrl: null,
         processing: true,
         procError: false,
+        useRaw: false,
         name: item.label,
         category: item.category,
         color: item.color,
@@ -183,9 +185,9 @@ export function DetectTestPage() {
     try {
       const clothing: Omit<ClothingItem, 'id'>[] = []
       for (const r of keep) {
-        // Фото уже обработано на этапе review — просто заливаем готовое
-        // (если обработка не удалась, фолбэк — сырой кроп).
-        const blob = await dataUrlToBlob(r.processedUrl ?? r.crop)
+        // Фото уже обработано на этапе review — заливаем то, что выбрано в карточке:
+        // вырезанное (по умолчанию) либо сырой кроп с фоном (если автокроп кривой).
+        const blob = await dataUrlToBlob(r.useRaw ? r.crop : (r.processedUrl ?? r.crop))
         const imageUrl = await uploadPhoto(blob, user.uid)
         clothing.push({
           name: r.name || CATEGORY_RU[r.category] || r.category,
@@ -345,8 +347,9 @@ function ReviewCard({
   onPatch: (id: number, patch: Partial<ReviewRow>) => void
 }) {
   // Пока идёт обработка — показываем сырой кроп с оверлеем-спиннером; как
-  // только готово — заменяем на вещь на прозрачном фоне.
-  const preview = row.processedUrl ?? row.crop
+  // только готово — вещь на прозрачном фоне (или сырой кроп, если выбрано «С фоном»).
+  const preview = row.useRaw ? row.crop : (row.processedUrl ?? row.crop)
+  const canToggle = !row.processing && !!row.processedUrl
   return (
     <div
       className={`rounded-2xl border p-3 space-y-3 transition-opacity ${
@@ -389,15 +392,35 @@ function ReviewCard({
         onChange={(seasons) => onPatch(row.id, { seasons })}
       />
 
-      <div className="flex items-center justify-between">
-        {row.procError ? (
+      <div className="flex items-center justify-between gap-2">
+        {/* Переключатель вырезанного/исходного — спасает кривой автокроп */}
+        {canToggle ? (
+          <div className="inline-flex rounded-full bg-zinc-100 p-0.5 text-[11px]">
+            <button
+              onClick={() => onPatch(row.id, { useRaw: false })}
+              className={`px-2.5 py-1 rounded-full transition-colors ${
+                !row.useRaw ? 'bg-white shadow-sm text-zinc-800' : 'text-zinc-500'
+              }`}
+            >
+              Вырезано
+            </button>
+            <button
+              onClick={() => onPatch(row.id, { useRaw: true })}
+              className={`px-2.5 py-1 rounded-full transition-colors ${
+                row.useRaw ? 'bg-white shadow-sm text-zinc-800' : 'text-zinc-500'
+              }`}
+            >
+              С фоном
+            </button>
+          </div>
+        ) : row.procError ? (
           <span className="text-[11px] text-amber-600">Фон не обработан — фото как есть</span>
         ) : (
           <span />
         )}
         <button
           onClick={() => onPatch(row.id, { excluded: !row.excluded })}
-          className="inline-flex items-center gap-1 text-[11px] text-zinc-400 underline underline-offset-2"
+          className="inline-flex items-center gap-1 text-[11px] text-zinc-400 underline underline-offset-2 shrink-0"
         >
           {row.excluded ? <Check size={12} /> : <X size={12} />}
           {row.excluded ? 'Вернуть' : 'Убрать'}
