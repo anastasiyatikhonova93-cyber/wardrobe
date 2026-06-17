@@ -135,27 +135,33 @@ export function DetectTestPage() {
       setRows(initial)
       setBusy(false)
 
-      // Сразу приводим каждую вещь к гардеробному виду: AI-ретушь (Gemini), при
-      // сбое/отсутствии биллинга — локальное вырезание фона + цветокоррекция.
-      // Последовательно — модель вырезания фона и так сериализована (gate).
-      for (const row of initial) {
-        if (runId.current !== myRun) return
-        try {
-          const blob = await dataUrlToBlob(row.crop)
-          let processed: Blob
+      // Сразу приводим каждую вещь к гардеробному виду: AI-ретушь (Gemini, по
+      // категории — изолирует именно нужный предмет), при сбое — локальное
+      // вырезание фона. Обрабатываем пулом по 2 (как массовая загрузка): AI-ретушь
+      // ~10 с/вещь, последовательно 8 вещей это ~90 с; параллель сокращает вдвое.
+      let cursor = 0
+      const worker = async (): Promise<void> => {
+        while (cursor < initial.length) {
+          const row = initial[cursor++]
+          if (runId.current !== myRun) return
           try {
-            processed = await cleanupBest(blob, row.category)
+            const blob = await dataUrlToBlob(row.crop)
+            let processed: Blob
+            try {
+              processed = await cleanupBest(blob, row.category)
+            } catch {
+              processed = await cleanupPhoto(blob)
+            }
+            const url = await blobToDataUrl(processed)
+            if (runId.current !== myRun) return
+            patchRow(row.id, { processedUrl: url, processing: false })
           } catch {
-            processed = await cleanupPhoto(blob)
+            if (runId.current !== myRun) return
+            patchRow(row.id, { processing: false, procError: true })
           }
-          const url = await blobToDataUrl(processed)
-          if (runId.current !== myRun) return
-          patchRow(row.id, { processedUrl: url, processing: false })
-        } catch {
-          if (runId.current !== myRun) return
-          patchRow(row.id, { processing: false, procError: true })
         }
       }
+      await Promise.all([worker(), worker()])
     } catch (e) {
       if (runId.current !== myRun) return
       setError(e instanceof Error ? e.message : 'Не удалось распознать')
