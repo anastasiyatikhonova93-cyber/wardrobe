@@ -148,7 +148,9 @@ export function DetectTestPage() {
             const blob = await dataUrlToBlob(row.crop)
             let processed: Blob
             try {
-              processed = await cleanupBest(blob, row.category)
+              // Передаём название — чтобы ретушь извлекла ИМЕННО этот предмет,
+              // если в рамку попал сосед (плотное селфи).
+              processed = await cleanupBest(blob, row.category, row.name)
             } catch {
               processed = await cleanupPhoto(blob)
             }

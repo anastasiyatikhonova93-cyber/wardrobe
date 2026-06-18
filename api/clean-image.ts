@@ -73,7 +73,16 @@ export default async function handler(req: IncomingMessage, res: Res) {
       return res.status(400).json({ error: 'image (base64) is required' })
     }
     const { mimeType, data } = parseDataUrl(image)
-    const prompt = promptForCategory(body?.category)
+    // Необязательная подсказка: какой именно предмет извлечь. Нужна, когда кроп
+    // содержит несколько вещей (мульти-распознавание): без неё модель оставляет
+    // самый «заметный» предмет, а не нужный. С названием — извлекает именно его.
+    const label = typeof body?.label === 'string' && body.label.trim() ? body.label.trim() : null
+    const base = promptForCategory(body?.category)
+    const prompt = label
+      ? `The single target item to extract is: "${label}". The photo may contain other ` +
+        `clothing, bags, accessories, a person or background — IGNORE and REMOVE all of ` +
+        `them, and render ONLY this one target item. ${base}`
+      : base
 
     const reqBody = JSON.stringify({
       contents: [
@@ -145,7 +154,7 @@ function extractImage(json: unknown): { mimeType: string; data: string } | null 
   return null
 }
 
-function readJsonBody(req: IncomingMessage): Promise<{ image?: unknown; category?: unknown } | null> {
+function readJsonBody(req: IncomingMessage): Promise<{ image?: unknown; category?: unknown; label?: unknown } | null> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0

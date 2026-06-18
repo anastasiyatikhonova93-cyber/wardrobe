@@ -1,14 +1,20 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 
+// gemini-2.5-pro отвечает дольше flash — поднимаем лимит длительности функции
+// (по умолчанию Vercel может оборвать раньше).
+export const maxDuration = 60
+
 interface Res extends ServerResponse {
   status: (code: number) => Res
   json: (data: unknown) => void
 }
 
 // Детекция нескольких вещей на одном фото (зеркальное селфи / фото образа).
-// Gemini 2.5 умеет возвращать bounding box'ы по картинке — это бесплатный
-// vision-тариф (тот же, что у /api/classify), биллинг не нужен.
-const GEMINI_MODEL = 'gemini-2.5-flash'
+// Gemini 2.5 умеет возвращать bounding box'ы по картинке. Используем PRO: у него
+// заметно точнее пространственная привязка — flash на плотном фото ставит рамки
+// внахлёст и промахивается по мелочам (серьги/кольцо), из-за чего кроп захватывает
+// соседний предмет. Pro медленнее (одна детекция, ~20-40 с), укладывается в таймаут.
+const GEMINI_MODEL = 'gemini-2.5-pro'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
 // Просим список вещей с рамками. Формат box_2d у Gemini — [ymin, xmin, ymax, xmax],
@@ -103,7 +109,7 @@ async function callGeminiWithRetry(
     const res = await fetch(GEMINI_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(58000),
       body: reqBody,
     })
     if (res.ok) return { ok: true, json: await res.json() }

@@ -46,12 +46,12 @@ async function blobToCompactDataUrl(source: Blob, maxDim = 1280, quality = 0.9):
  * Требует включённого биллинга Google — иначе вернёт ошибку (квота), и вызывающий
  * код откатится на локальную обработку.
  */
-export async function cleanupPhotoAI(source: Blob, category?: string): Promise<Blob> {
+export async function cleanupPhotoAI(source: Blob, category?: string, label?: string): Promise<Blob> {
   const image = await blobToCompactDataUrl(source)
   const res = await fetch('/api/clean-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image, category }),
+    body: JSON.stringify({ image, category, label }),
   })
   if (!res.ok) {
     const detail = await res.json().catch(() => null)
@@ -67,8 +67,8 @@ export async function cleanupPhotoAI(source: Blob, category?: string): Promise<B
  * затем вырезание этого белого фона в прозрачный PNG — без ореола, т.к. фон
  * после Gemini ровный и однотонный. Бросает ошибку, если AI недоступен.
  */
-export async function cleanupBest(source: Blob, category?: string): Promise<Blob> {
-  const ai = await cleanupPhotoAI(source, category)
+export async function cleanupBest(source: Blob, category?: string, label?: string): Promise<Blob> {
+  const ai = await cleanupPhotoAI(source, category, label)
   return removeBackground(ai)
 }
 
