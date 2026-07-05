@@ -77,7 +77,7 @@ export function ShoppingPage() {
         error={error}
       />
       {userItems.length > 0 && (
-        <Section title="Хочу купить">
+        <Section title="Купить">
           {userItems.map((item) => (
             <ShoppingItemCard
               key={item.id}
@@ -106,7 +106,7 @@ export function ShoppingPage() {
         </Section>
       )}
       {shopping.length === 0 && <EmptyState />}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Хочу купить">
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Купить">
         <AddShoppingForm onAdd={addShoppingItem} onClose={() => setShowAdd(false)} />
       </Modal>
     </div>
@@ -116,7 +116,7 @@ export function ShoppingPage() {
 function Header({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex items-center justify-between mb-4">
-      <h1 className="text-xl font-semibold">Хочу купить</h1>
+      <h1 className="text-xl font-semibold">Купить</h1>
       <button onClick={onAdd} className="rounded-full bg-black text-white p-2.5 transition-transform active:scale-95">
         <Plus size={18} />
       </button>

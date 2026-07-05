@@ -4,7 +4,7 @@ import { LayoutGrid, Shirt, ShoppingBag, User } from 'lucide-react'
 const links = [
   { to: '/', icon: LayoutGrid, label: 'Образы' },
   { to: '/wardrobe', icon: Shirt, label: 'Гардероб' },
-  { to: '/shopping', icon: ShoppingBag, label: 'Хочу купить' },
+  { to: '/shopping', icon: ShoppingBag, label: 'Купить' },
   { to: '/profile', icon: User, label: 'Профиль' },
 ]
 
