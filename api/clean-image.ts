@@ -26,7 +26,14 @@ const PROMPTS: Record<string, string> = {
   clothing:
     'Professional e-commerce product photo of this single clothing item. Remove the ' +
     'hanger, clips, hands, wall and all background. Lay the garment straight and ' +
-    'symmetric, gently smoothing out wrinkles and creases.' + COMMON,
+    'symmetric, gently smoothing out wrinkles and creases. ' +
+    'If the garment opens at the front (a jacket, blazer, coat, trench, cardigan, ' +
+    'shirt or blouse with buttons or a zip), show it fully OPEN and UNBUTTONED / ' +
+    'unzipped: the two front panels relaxed apart and symmetric, lapels and collar ' +
+    'laid flat, the inner lining partly visible — exactly like an open, unbuttoned ' +
+    'jacket worn casually open. Never button, zip, belt or close such a garment. ' +
+    'Garments without a front opening (dresses, t-shirts, knit tops, sweaters, ' +
+    'trousers, skirts) keep exactly as they are, do not cut or open them.' + COMMON,
   shoes:
     'Professional e-commerce product photo of this footwear. Remove the chair, floor, ' +
     'wall, hands and all background. Render the footwear EMPTY — no foot, leg or skin ' +
@@ -36,11 +43,12 @@ const PROMPTS: Record<string, string> = {
     'view).' + COMMON,
   bags:
     'Professional e-commerce product photo of this bag. Remove the hook, hanger, hand, ' +
-    'wall and all background. Arrange the bag facing front with its strap laid out ' +
-    'neatly and symmetrically. Keep the same straps and handles as in the original — the ' +
-    'same number, each one whole and intact as a single continuous piece; do not add an ' +
-    'extra handle or strap that is not there, and do not tear, split, duplicate or ' +
-    'otherwise modify them.' + COMMON,
+    'wall and all background. Show the bag facing front; let its strap hang naturally in ' +
+    'a single simple loop as one continuous piece. Keep exactly the same straps and ' +
+    'handles as in the original — the same number, each one whole and intact; do NOT lay ' +
+    'the strap out separately, coil it or draw it more than once, do NOT add an extra ' +
+    'handle or strap that is not there, and do not tear, split or duplicate them.' +
+    COMMON,
   accessory:
     'Professional e-commerce product photo of this accessory (jewelry/belt/etc). ' +
     'Remove any packaging card, price tag, hand, fingers, clothing and all background. ' +
