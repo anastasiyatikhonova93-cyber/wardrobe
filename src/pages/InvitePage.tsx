@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, getDoc } from 'firebase/firestore'
-import { db } from '../lib/firebase'
 import { useAuth } from '../lib/auth'
 import { useStore } from '../store'
+import { callDb } from '../lib/api'
 import { Loader2 } from 'lucide-react'
+import type { WardrobeRole } from '../types'
 
 const PENDING_INVITE_KEY = 'pendingInviteToken'
 
@@ -20,57 +20,53 @@ export function clearPendingInvite() {
   localStorage.removeItem(PENDING_INVITE_KEY)
 }
 
-type InviteStatus = 'loading' | 'ready' | 'not-found' | 'already-used' | 'accepting' | 'accepted' | 'error'
+type Status = 'loading' | 'ready' | 'not-found' | 'already-used' | 'accepting' | 'accepted' | 'error'
 
 export function InvitePage() {
   const { token } = useParams<{ token: string }>()
   const { user, loading: authLoading, signIn } = useAuth()
-  const { acceptInvite, viewSharedWardrobe } = useStore()
+  const acceptInvite = useStore((s) => s.acceptInvite)
   const navigate = useNavigate()
 
-  const [status, setStatus] = useState<InviteStatus>('loading')
+  const [status, setStatus] = useState<Status>('loading')
   const [ownerName, setOwnerName] = useState('')
+  const [wardrobeName, setWardrobeName] = useState('')
+  const [role, setRole] = useState<WardrobeRole>('member')
   const [error, setError] = useState('')
 
-  // Save token for after login (only when not yet authenticated)
+  // Сохраняем токен для возврата после логина (пока не авторизованы).
   useEffect(() => {
     if (token && !user && !authLoading) savePendingInvite(token)
   }, [token, user, authLoading])
 
+  // Превью приглашения грузим с сервера (/api/db, не клиентский Firestore — он может
+  // быть заблокирован). Требует авторизации, поэтому грузим только для залогиненного.
   useEffect(() => {
     if (authLoading) return
-
     if (!user) {
       setStatus('ready')
       return
     }
-
     if (!token) return
     setStatus('loading')
     let cancelled = false
-    async function load() {
+    ;(async () => {
       try {
-        const snap = await getDoc(doc(db, 'invites', token!))
+        const info = await callDb('inviteInfo', { token })
         if (cancelled) return
-        if (!snap.exists()) {
-          setStatus('not-found')
-          return
-        }
-        const data = snap.data()
-        setOwnerName(data.ownerName || 'Пользователь')
-        if (data.used) {
-          setStatus('already-used')
-        } else {
-          setStatus('ready')
-        }
+        setOwnerName(info.ownerName || 'Пользователь')
+        setWardrobeName(info.wardrobeName || 'Гардероб')
+        setRole(info.role === 'owner' ? 'owner' : 'member')
+        if (info.status === 'not_found') setStatus('not-found')
+        else if (info.status === 'revoked' || info.status === 'used') setStatus('already-used')
+        else setStatus('ready')
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Не удалось загрузить приглашение')
           setStatus('error')
         }
       }
-    }
-    load()
+    })()
     return () => { cancelled = true }
   }, [token, user, authLoading])
 
@@ -78,13 +74,10 @@ export function InvitePage() {
     if (!token) return
     setStatus('accepting')
     try {
-      const result = await acceptInvite(token)
+      await acceptInvite(token) // стор сам обновит список и переключится на гардероб
       clearPendingInvite()
       setStatus('accepted')
-      setTimeout(() => {
-        viewSharedWardrobe(result.ownerUid, result.ownerName)
-        navigate('/')
-      }, 1000)
+      setTimeout(() => navigate('/'), 1000)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка')
       setStatus('error')
@@ -146,9 +139,13 @@ export function InvitePage() {
 
         {!authLoading && status === 'ready' && user && (
           <div>
-            <p className="text-lg font-medium mb-2">Приглашение от {ownerName || 'пользователя'}</p>
+            <p className="text-lg font-medium mb-2">
+              Приглашение от {ownerName || 'пользователя'}
+            </p>
             <p className="text-sm text-zinc-400 mb-6">
-              Вы получите доступ к гардеробу для редактирования и составления образов
+              {role === 'owner'
+                ? `Вы станете владельцем гардероба «${wardrobeName}». Пригласивший останется соавтором.`
+                : `Вы получите доступ к гардеробу «${wardrobeName}» для редактирования и составления образов.`}
             </p>
             <button onClick={handleAccept} className="w-full py-3 rounded-full bg-black text-white text-sm font-medium">
               Принять приглашение
@@ -166,7 +163,7 @@ export function InvitePage() {
         {status === 'accepted' && (
           <div>
             <p className="text-lg font-medium mb-2">Готово!</p>
-            <p className="text-sm text-zinc-400">Открываем гардероб {ownerName}…</p>
+            <p className="text-sm text-zinc-400">Открываем гардероб «{wardrobeName}»…</p>
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import { useStore } from './store'
 import { Layout } from './components/Layout'
@@ -13,7 +13,7 @@ import { SeedPage } from './pages/SeedPage'
 import { FixPhotosPage } from './pages/FixPhotosPage'
 import { DetectTestPage } from './pages/DetectTestPage'
 import { InvitePage, getPendingInvite, clearPendingInvite } from './pages/InvitePage'
-import { SharedWardrobesPage } from './pages/SharedWardrobesPage'
+import { WardrobesPage } from './pages/WardrobesPage'
 import { Loader2, RotateCw, WifiOff } from 'lucide-react'
 
 export default function App() {
@@ -28,7 +28,14 @@ export default function App() {
 
 function AppShell() {
   const { user, loading: authLoading } = useAuth()
-  const { subscribe, unsubscribe, loading: dataLoading, loadError, retryLoad } = useStore()
+  // Селекторы вместо деструктуринга всего стора — иначе AppShell (и всё дерево роутов)
+  // перерисовывался бы на каждой мутации стора (добавление вещи, образа и т.п.).
+  const subscribe = useStore((s) => s.subscribe)
+  const unsubscribe = useStore((s) => s.unsubscribe)
+  const dataLoading = useStore((s) => s.loading)
+  const wardrobesLoading = useStore((s) => s.wardrobesLoading)
+  const loadError = useStore((s) => s.loadError)
+  const retryLoad = useStore((s) => s.retryLoad)
   const location = useLocation()
   const navigate = useNavigate()
   const isInvitePath = location.pathname.startsWith('/invite/')
@@ -64,7 +71,7 @@ function AppShell() {
     return <DetectTestPage />
   }
 
-  if (authLoading || (user && dataLoading)) {
+  if (authLoading || (user && (dataLoading || wardrobesLoading))) {
     return <LoadingScreen />
   }
 
@@ -88,7 +95,9 @@ function AppShell() {
         <Route path="/import" element={<ImportPage />} />
         <Route path="/seed" element={<SeedPage />} />
         <Route path="/fix-photos" element={<FixPhotosPage />} />
-        <Route path="/shared" element={<SharedWardrobesPage />} />
+        <Route path="/wardrobes" element={<WardrobesPage />} />
+        {/* Старый путь /shared — редирект на новую страницу управления гардеробами. */}
+        <Route path="/shared" element={<Navigate to="/wardrobes" replace />} />
       </Routes>
     </Layout>
   )

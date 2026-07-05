@@ -1,6 +1,5 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,7 +12,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 
+// Все данные (включая превью приглашений) идут через /api/db (admin SDK): на части
+// пользовательских сетей домен Firestore заблокирован. Клиентский Firestore не нужен.
 export const auth = getAuth(app)
-// Данные приложения идут через /api/db (admin SDK), т.к. на части сетей домен
-// Firestore заблокирован. Этот клиентский db нужен только странице приглашений.
-export const db = getFirestore(app)

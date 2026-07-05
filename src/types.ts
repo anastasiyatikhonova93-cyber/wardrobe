@@ -142,24 +142,36 @@ export const BODY_TYPE_LABELS: Record<BodyType, string> = {
   'inverted-triangle': 'Перевёрнутый треугольник',
 }
 
-export interface Invite {
-  token: string
+/** Роль пользователя в гардеробе. Права owner и member идентичны (полный доступ,
+ *  включая профиль); роль влияет только на управление (удаление/передача/отзыв). */
+export type WardrobeRole = 'owner' | 'member'
+
+/** Гардероб-пространство в списке доступных текущему пользователю. */
+export interface WardrobeMeta {
+  id: string
+  name: string
   ownerUid: string
-  ownerName: string
-  createdAt: Date
-  used: boolean
-  acceptedBy?: string
+  /** Роль ТЕКУЩЕГО пользователя в этом гардеробе. */
+  role: WardrobeRole
+  /** Личный гардероб (id === uid) — его нельзя удалить/покинуть. */
+  isPersonal: boolean
+  memberCount?: number
 }
 
-export interface Collaborator {
+/** Участник гардероба (для экрана управления доступом). */
+export interface WardrobeMember {
   uid: string
-  role: 'stylist'
   displayName: string
   email: string
-  addedAt: Date
+  role: WardrobeRole
 }
 
-export interface SharedWardrobe {
-  ownerUid: string
+/** Статус приглашения при превью (ответ серверной операции inviteInfo). */
+export type InviteStatus = 'ready' | 'used' | 'revoked' | 'not_found'
+
+export interface InviteInfo {
+  status: InviteStatus
   ownerName: string
+  wardrobeName: string
+  role: WardrobeRole
 }

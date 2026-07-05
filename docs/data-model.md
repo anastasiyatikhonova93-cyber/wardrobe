@@ -6,19 +6,34 @@
 ## Структура Firestore
 
 ```
-capsule/{uid}                      ← документ профиля
+capsule/{wardrobeId}               ← документ гардероба-пространства (workspace)
+  ├─ ownerUid, name                (служебные поля workspace)
+  ├─ memberUids: string[]          инвариант: === Object.keys(members)
+  ├─ members: { [uid]: { role:'owner'|'member', displayName, email, addedAt } }
+  ├─ schemaVersion: 2, deleting?   маркер миграции / мягкое удаление
   ├─ height, weight, bodyType      (поля профиля прямо на документе)
   ├─ preferredStyles: string[]
   ├─ outfitCategories: Category[]
   ├─ wardrobe/{id}                 ← подколлекция: ClothingItem
   ├─ shopping/{id}                 ← подколлекция: ShoppingItem
   ├─ outfits/{id}                  ← подколлекция: Outfit
+  ├─ boards/{id}                   ← подколлекция: Board
   └─ features/{id}                 ← подколлекция: BodyFeature
+invites/{token}                    ← приглашение-ссылка
+  └─ wardrobeId, ownerName, wardrobeName, role, revoked, maxUses, useCount, acceptedBy
 ```
 
-Профиль (`Profile`) живёт **полями на самом документе** `capsule/{uid}`, а сущности —
-во вложенных подколлекциях. `features` (особенности фигуры) — отдельная подколлекция,
-хотя на клиенте лежит внутри `profile.features`.
+**`wardrobeId`** — id гардероба-пространства: либо `uid` (личный/legacy-гардероб,
+обратная совместимость — документы существующих юзеров остаются на месте), либо
+сгенерированный id (новые гардеробы). Один пользователь может состоять в нескольких
+гардеробах с ролью `owner`/`member` (поле `members`/`memberUids`). Доступ проверяет
+сервер по `memberUids` (см. [architecture.md](architecture.md)).
+
+Профиль (`Profile`) живёт **полями на самом документе**, а сущности — во вложенных
+подколлекциях. `features` (особенности фигуры) — отдельная подколлекция, хотя на
+клиенте лежит внутри `profile.features`. Служебные поля workspace отделяются от
+профиля при чтении (`load`) и не могут быть переписаны клиентским `setProfile`
+(`stripWorkspaceFields`).
 
 ## Основные сущности (`src/types.ts`)
 
@@ -33,8 +48,12 @@ capsule/{uid}                      ← документ профиля
   категории (`CATEGORY_WIDTH`) × `userScale`, а высота выводится из неё и реального
   соотношения сторон фото (в плоской раскладке размер читается по ширине).
   Поле `scale` — устаревшее (старый ширина-масштаб по категории), больше не читается.
+- **`Board`** — кураторская подборка образов: `outfitIds`, опц. `filterCategory`/`filterItemId`.
 - **`BodyFeature`** — особенность фигуры: `area`, `preference` (`hide`/`highlight`), `note`.
 - **`Category`** — пользовательская категория образа (`{ id, name }`).
+- **`WardrobeMeta`** — гардероб в списке доступных: `id`, `name`, `ownerUid`,
+  `role` (`owner`/`member`), `isPersonal` (id===uid). **`WardrobeMember`** — участник
+  (`uid`, `displayName`, `email`, `role`). **`WardrobeRole`** = `'owner' | 'member'`.
 
 **Справочники-константы** (там же): `CATEGORY_LABELS`, `SEASON_LABELS`,
 `BODY_TYPE_LABELS` (русские подписи), `DEFAULT_OUTFIT_CATEGORIES`. Геометрия раскладки
@@ -57,9 +76,18 @@ capsule/{uid}                      ← документ профиля
 
 ## Миграции читаются на лету при загрузке
 
-Схема версионируется не через скрипты, а **мягким чтением** в адаптерах стора
-(`src/store.ts`). При загрузке каждая запись прогоняется через `asClothing` /
-`asShopping` / `asOutfit`, которые проставляют дефолты и читают старые поля.
+Схема версионируется не через скрипты, а **мягким чтением** в адаптерах
+(`src/lib/adapters.ts`). При загрузке каждая запись прогоняется через `asClothing` /
+`asShopping` / `asOutfit` / `asBoard`, которые проставляют дефолты и читают старые поля.
+
+**Ленивый backfill workspace.** Существующие документы `capsule/{uid}` (без полей
+`ownerUid`/`memberUids`) мигрируются на лету при первом `load`: сервер merge-дописывает
+`ownerUid=uid`, `memberUids=[uid]`, `members`, `name='Мой гардероб'`, `schemaVersion:2`
+— только аддитивно, профиль и подколлекции не трогаются (см. инцидент потери данных в
+памяти). Идемпотентно (`arrayUnion`). Доступ к своему гардеробу **не зависит** от
+backfill: в авторизации есть ветка `wardrobeId===uid` (всегда разрешено), поэтому даже
+неудавшийся backfill не отрезает пользователя от своих данных. Массовых проходов по
+базе нет.
 
 Пример (`asOutfit`): старое поле `weather` читается как `categories`, если новое не
 задано. id погодных `DEFAULT_OUTFIT_CATEGORIES` (`hot`/`warm`/`cool`/`cold`)

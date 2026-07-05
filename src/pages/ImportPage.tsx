@@ -30,12 +30,16 @@ const STATUS_LABELS: Record<ItemStatus, string> = {
 export function ImportPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { addClothingBatch } = useStore()
+  const addClothingBatch = useStore((s) => s.addClothingBatch)
+  const activeWardrobeId = useStore((s) => s.activeWardrobeId)
   const { step, items, startProcessing, addFiles, updateItem, removeItem, reset } =
     useImportStore()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // Гардероб, в который идёт импорт, фиксируем на старте обработки — чтобы вещи ушли
+  // туда, где импорт начали, даже если пользователь переключит гардероб в процессе.
+  const targetWardrobeRef = useRef<string | null>(activeWardrobeId)
 
   useEffect(() => {
     preloadModel().catch(() => {})
@@ -44,6 +48,7 @@ export function ImportPage() {
   // Обработка живёт в сторе и продолжается в фоне; компонент лишь запускает её.
   function processAll() {
     if (!user) return
+    targetWardrobeRef.current = activeWardrobeId
     startProcessing(user.uid)
   }
 
@@ -67,7 +72,7 @@ export function ImportPage() {
     // Чистим импорт и уходим в гардероб ТОЛЬКО когда сохранение действительно прошло —
     // иначе при сбое сети потеряли бы обработанные вещи без следа.
     try {
-      await addClothingBatch(clothing)
+      await addClothingBatch(clothing, targetWardrobeRef.current ?? undefined)
       reset()
       navigate('/wardrobe')
     } catch (e) {

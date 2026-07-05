@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -15,5 +16,14 @@ export default defineConfig({
         secure: true,
       },
     },
+  },
+  test: {
+    // jsdom — дефолт для стора/компонентов (нужны localStorage, crypto, DOM).
+    // Чистые серверные тесты помечают себя `// @vitest-environment node` в шапке файла.
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    // api/ компилит Vercel отдельно; гоняем оттуда только чистые хелперы.
+    include: ['src/**/*.test.{ts,tsx}', 'api/**/*.test.ts'],
   },
 })
