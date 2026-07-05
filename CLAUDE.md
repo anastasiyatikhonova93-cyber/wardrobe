@@ -70,7 +70,9 @@ Zustand-стор (`src/store.ts`) — единственный источник 
 
 Авторизация — `src/lib/auth.tsx`: Google popup через клиентский Firebase Auth.
 `App.tsx` гейтит роуты по `user` + `loading`. Роуты: `/` (образы), `/wardrobe`,
-`/shopping`, `/profile`, `/import`, `/seed`, `/fix-photos`, `/shared`, `/invite/:token`.
+`/shopping`, `/profile`, `/import`, `/seed`, `/fix-photos`, `/shared`, `/invite/:token`,
+`/detect-test` (мульти-распознавание вещей на одном фото; публичный — рендерится
+до auth-гейта, сохранение в гардероб требует входа).
 
 > Совместный доступ (invite / collaborators / shared wardrobes) сейчас **отключён** —
 > соответствующие методы стора кидают «временно недоступно». Типы и UI остались.
@@ -109,7 +111,8 @@ Zustand-стор (`src/store.ts`) — единственный источник 
 
 ### Serverless-функции (`api/`, Vercel, Node `http`-хендлеры)
 
-`db.ts` (данные), `classify.ts` (Gemini vision), `clean-image.ts` (Gemini image-gen),
+`db.ts` (данные), `classify.ts` (Gemini vision), `detect.ts` (Gemini vision:
+мульти-распознавание вещей с рамками), `clean-image.ts` (Gemini image-gen),
 `og-image.ts` (OG-картинка для шеринга). Все читают тело вручную через `readJsonBody`
 с лимитом размера. `vercel.json` рерайтит все не-`/api/` пути на `/` (SPA-роутинг).
 

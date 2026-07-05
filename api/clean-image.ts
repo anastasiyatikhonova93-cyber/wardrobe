@@ -62,6 +62,31 @@ function promptForCategory(category: unknown): string {
   return PROMPTS.clothing
 }
 
+// Промт для мульти-распознавания (когда передан label): предмет снят НА ЧЕЛОВЕКЕ,
+// поэтому упор — верность оригиналу, а не «студийная укладка». Общий clothing-промт
+// (для массовой загрузки с вешалки) намеренно разглаживает вещь — здесь это как раз
+// портит: перерисовывает пуговицы, добавляет складки, отбеливает цвет. Убираем
+// «lay straight / smooth wrinkles», добавляем точечные требования верности.
+function detectPrompt(label: string, category: unknown): string {
+  let extra = ''
+  if (category === 'shoes') {
+    extra = ' Render the footwear EMPTY — no foot, leg or skin inside or showing through.'
+  } else if (category === 'bags') {
+    extra = ' Keep the same straps and handles — the same number, each whole and intact; do not add or duplicate any.'
+  }
+  return (
+    `Extract ONLY this one item from the photo: "${label}". Remove the person, skin, hands, ` +
+    `legs, any other clothing and objects, and all background.${extra} ` +
+    `Reproduce the item EXACTLY as it looks in the photo: the SAME color and shade (do NOT ` +
+    `brighten, whiten or shift the color), the SAME number and state of buttons, zippers and ` +
+    `fasteners (do NOT unbutton, unzip, close or restyle it), the SAME real drape, folds and ` +
+    `length (do NOT iron, smooth, re-drape, add or remove folds or wrinkles), the SAME cut and ` +
+    `proportions. Do not add, remove or redraw any detail. Pure solid white #FFFFFF background, ` +
+    `item centered with small even margins, even soft studio lighting, no cast shadows, no ` +
+    `reflections, no halo or outline. Output a sharp, high-resolution e-commerce product photo.`
+  )
+}
+
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export default async function handler(req: IncomingMessage, res: Res) {
@@ -81,7 +106,13 @@ export default async function handler(req: IncomingMessage, res: Res) {
       return res.status(400).json({ error: 'image (base64) is required' })
     }
     const { mimeType, data } = parseDataUrl(image)
-    const prompt = promptForCategory(body?.category)
+    // Необязательная подсказка: какой именно предмет извлечь. Нужна, когда кроп
+    // содержит несколько вещей (мульти-распознавание): без неё модель оставляет
+    // самый «заметный» предмет, а не нужный. С названием — извлекает именно его.
+    const label = typeof body?.label === 'string' && body.label.trim() ? body.label.trim() : null
+    // С label (мульти-распознавание, вещь на человеке) — промт верности оригиналу.
+    // Без label (массовая загрузка с вешалки) — прежний «студийный» промт по категории.
+    const prompt = label ? detectPrompt(label, body?.category) : promptForCategory(body?.category)
 
     const reqBody = JSON.stringify({
       contents: [
@@ -153,7 +184,7 @@ function extractImage(json: unknown): { mimeType: string; data: string } | null 
   return null
 }
 
-function readJsonBody(req: IncomingMessage): Promise<{ image?: unknown; category?: unknown } | null> {
+function readJsonBody(req: IncomingMessage): Promise<{ image?: unknown; category?: unknown; label?: unknown } | null> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
