@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Upload, LayoutGrid } from 'lucide-react'
+import { Plus, Upload, LayoutGrid, ScanSearch } from 'lucide-react'
 import { useStore } from '../store'
 import type { ClothingCategory } from '../types'
 import { CATEGORY_LABELS } from '../types'
@@ -65,6 +65,13 @@ function Header({ onAdd, onBoard, hasItems }: { onAdd: () => void; onBoard: () =
             <LayoutGrid size={18} />
           </button>
         )}
+        <button
+          onClick={() => navigate('/detect-test')}
+          className="rounded-full bg-zinc-100 text-zinc-600 p-2.5 transition-transform active:scale-95 hover:bg-zinc-200"
+          title="Распознать вещи на фото или селфи"
+        >
+          <ScanSearch size={18} />
+        </button>
         <button
           onClick={() => navigate('/import')}
           className="rounded-full bg-zinc-100 text-zinc-600 p-2.5 transition-transform active:scale-95 hover:bg-zinc-200"

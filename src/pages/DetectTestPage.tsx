@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Upload, AlertCircle, X, Check } from 'lucide-react'
+import { Loader2, Upload, AlertCircle, X, Check, ArrowLeft } from 'lucide-react'
 import { detectItems, cropItem } from '../lib/detect-items'
 import type { DetectedItem } from '../lib/detect-items'
 import { useAuth } from '../lib/auth'
@@ -217,6 +217,17 @@ export function DetectTestPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4 space-y-6">
+      {/* Возврат в приложение — страница рендерится вне Layout (без нижней
+          навигации), поэтому даём залогиненному явную ссылку назад. */}
+      {user && (
+        <button
+          onClick={() => navigate('/wardrobe')}
+          className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800 transition-colors"
+        >
+          <ArrowLeft size={16} />
+          В гардероб
+        </button>
+      )}
       <div>
         <h1 className="text-xl font-semibold">Распознать вещи на фото</h1>
         <p className="text-sm text-zinc-500 mt-1">
