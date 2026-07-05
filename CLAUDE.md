@@ -17,10 +17,15 @@ npm run build     # tsc -b && vite build — ОБЯЗАН быть зелёны�
 npm run lint      # eslint
 npm run preview   # предпросмотр прод-сборки
 
+npm run test      # Vitest (юнит-тесты: стор, чистые хелперы, серверная авторизация)
+npm run test:watch
+
 node e2e-smoke.mjs   # Playwright smoke-тест против прода (wardrobe-build.vercel.app), без авторизации
 ```
 
-Юнит-тестов нет. Проверка изменений — через `npm run build` + ручной прогон.
+Проверка изменений — `npm run build` (зелёный `tsc -b`) + `npm test` + ручной прогон.
+Юнит-тесты на Vitest есть для стора и логики мульти-гардеробов; остальное (UI, пайплайн
+фото) — ручной прогон.
 
 ### Деплой
 
@@ -37,22 +42,29 @@ Vercel тихо падает. Параллельный поздний депло
 
 ### Поток данных: всё через `/api/db`, НЕ через клиентский Firestore
 
-Ключевой и неочевидный момент. В `src/lib/firebase.ts` есть клиентский `db`, но он
-**почти не используется** — только страница приглашений. Все данные приложения идут
-через serverless-функцию `/api/db` (Firebase **admin** SDK):
+Ключевой и неочевидный момент. Клиентский Firestore НЕ используется
+(`src/lib/firebase.ts` экспортирует только `auth`). Все данные приложения идут через
+serverless-функцию `/api/db` (Firebase **admin** SDK):
 
 - Причина: на части пользовательских сетей домен `firestore.googleapis.com`
   заблокирован, а собственный сервер до базы достучаться может.
-- `src/store.ts` → `callDb(op, args)` шлёт POST на `/api/db` с Firebase `idToken`;
-  сервер (`api/db.ts`) верифицирует токен и работает с Firestore от имени админа.
-- Операции `db.ts`: `load`, `add`, `update`, `delete`, `batchAdd`, `clear`,
-  `replace`, `setProfile`. Разрешённые подколлекции захардкожены в `COLLECTIONS`.
+- `src/lib/api.ts` → `callDb(op, args)` шлёт POST на `/api/db` с Firebase `idToken`;
+  стор подмешивает активный `wardrobeId`. Сервер (`api/db.ts`) верифицирует токен,
+  **проверяет членство** (`loadWorkspace`/`assertMember`, чистые хелперы в
+  `api/_authz.ts`) и работает с Firestore от имени админа в `capsule/{wardrobeId}`.
+- Операции `db.ts`: данные (`load`/`add`/`update`/`delete`/`batchAdd`/`clear`/`replace`/
+  `setProfile`) + гардеробы/шеринг (`listWardrobes`/`createWardrobe`/`renameWardrobe`/
+  `deleteWardrobe`/`leaveWardrobe`/`listMembers`/`removeMember`/`createInvite`/
+  `inviteInfo`/`acceptInvite`). Подколлекции захардкожены в `COLLECTIONS`.
 
 ### Модель данных Firestore
 
-Документ `capsule/{uid}` хранит поля профиля (`height`, `weight`, `bodyType`,
-`preferredStyles`, `outfitCategories`), а вложенные сущности — в подколлекциях:
-`wardrobe`, `shopping`, `outfits`, `features`. Типы — в `src/types.ts`.
+Документ `capsule/{wardrobeId}` — гардероб-пространство. Хранит поля профиля
+(`height`, `weight`, `bodyType`, `preferredStyles`, `outfitCategories`), служебные поля
+workspace (`ownerUid`, `name`, `memberUids`, `members`) и вложенные сущности в
+подколлекциях: `wardrobe`, `shopping`, `outfits`, `boards`, `features`. `wardrobeId`
+= `uid` для личного/legacy-гардероба (обратная совместимость) либо сгенерированный id.
+Типы — в `src/types.ts`. Подробнее: [docs/data-model.md](docs/data-model.md).
 
 - Картинки хранятся **инлайн как data-URL в самих документах** (отдельного Storage-бакета нет).
   `src/lib/storage.ts` сжимает фото так, чтобы уложиться в лимит документа Firestore
@@ -64,16 +76,22 @@ Vercel тихо падает. Параллельный поздний депло
 ### Состояние
 
 Zustand-стор (`src/store.ts`) — единственный источник правды на клиенте. Каждая
-мутация: сперва `callDb(...)`, затем оптимистичное `set(...)`. `subscribe(uid)`
-делает разовый `load` (не realtime-подписка). Селектор `useOutfitCategories`
-отдаёт категории профиля с фолбэком на `DEFAULT_OUTFIT_CATEGORIES`.
+мутация: сперва `callDb(...)`, затем оптимистичное `set(...)`. `subscribe(uid)` грузит
+список гардеробов, выбирает активный (localStorage→личный) и делает разовый `load`
+(не realtime-подписка). Переключение — `switchWardrobe`; гонки гасит эпоха `_loadEpoch`;
+отзыв доступа (`code:'no_access'`) → авто-переключение на личный + тост. Селектор
+`useOutfitCategories` отдаёт категории профиля с фолбэком на `DEFAULT_OUTFIT_CATEGORIES`.
 
 Авторизация — `src/lib/auth.tsx`: Google popup через клиентский Firebase Auth.
 `App.tsx` гейтит роуты по `user` + `loading`. Роуты: `/` (образы), `/wardrobe`,
-`/shopping`, `/profile`, `/import`, `/seed`, `/fix-photos`, `/shared`, `/invite/:token`.
+`/shopping`, `/profile`, `/import`, `/seed`, `/fix-photos`, `/wardrobes`,
+`/invite/:token` (старый `/shared` редиректит на `/wardrobes`).
 
-> Совместный доступ (invite / collaborators / shared wardrobes) сейчас **отключён** —
-> соответствующие методы стора кидают «временно недоступно». Типы и UI остались.
+> **Мульти-гардеробы и шеринг включены.** Гардероб — пространство с участниками и
+> ролями (`owner`/`member`, права равны, полный доступ). Переключатель —
+> `WardrobeSwitcher` в `Layout`; управление — страница `/wardrobes`. Два вида
+> ссылки-приглашения: «соавтор» (member) и «передать клиенту» (owner-хэндофф).
+> Подробнее: [docs/architecture.md](docs/architecture.md).
 
 ### AI: два независимых провайдера
 
