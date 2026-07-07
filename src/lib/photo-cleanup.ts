@@ -72,6 +72,28 @@ export async function cleanupBest(source: Blob, category?: string, label?: strin
   return removeBackground(ai)
 }
 
+/**
+ * Генерация «состояния» вещи: берёт товарное фото вещи (базовое состояние) и
+ * переснимает её в другом виде по свободной команде («застегни», «завяжи концы
+ * спереди») через тот же /api/clean-image (Gemini image-gen), затем вырезает фон
+ * в прозрачный PNG. Требует биллинга Google — иначе бросит ошибку (квота 429).
+ */
+export async function generateState(source: Blob, prompt: string): Promise<Blob> {
+  const image = await blobToCompactDataUrl(source)
+  const res = await fetch('/api/clean-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image, prompt }),
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    throw new Error(detail?.error ?? `Генерация недоступна (${res.status})`)
+  }
+  const data = await res.json()
+  if (typeof data?.image !== 'string') throw new Error('Сервис не вернул изображение')
+  return removeBackground(await dataUrlToBlob(data.image))
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(

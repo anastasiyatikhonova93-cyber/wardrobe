@@ -39,6 +39,15 @@ invites/{token}                    ← приглашение-ссылка
 
 - **`ClothingItem`** — вещь гардероба: `name`, `category` (`ClothingCategory`),
   `color`, `seasons`, опц. `style`/`imageUrl`/`shopUrl`/`notes`.
+  - Опц. **состояния вещи** (несколько AI-видов одного предмета): `states?: ItemState[]`
+    (`{ id, label, imageUrl, prompt? }`) + `defaultStateId`. Пусто/отсутствует = одно
+    фото (`imageUrl`), как раньше. При наличии `imageUrl` **дублирует** картинку
+    основного состояния (`defaultStateId`), чтобы весь существующий код (карточка,
+    образы, доска) читал её без изменений. Картинки состояний генерирует AI-командой
+    (`generateState` → `/api/clean-image` c `prompt`), хранятся инлайн и сжимаются
+    плотнее основного (`uploadStatePhoto`, `STATE_MAX_DIMENSION = 512`); лимит ~4
+    состояния на вещь, чтобы уложиться в документ Firestore. Нормализация: <2 состояний
+    храним как `states: []` (вырождение в одиночную картинку).
 - **`ShoppingItem`** — позиция списка покупок: те же базовые поля + `price`,
   `isAiSuggested`, `isConfirmed`, `aiReason`, `needColorAdvice`.
 - **`Outfit`** — образ: ссылки `wardrobeItemIds` / `shoppingItemIds`, `season`,

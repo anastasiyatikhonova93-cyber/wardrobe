@@ -31,6 +31,21 @@ export async function uploadPhoto(file: File | Blob, _uid: string): Promise<stri
   }
 }
 
+// У вещи может быть несколько состояний (картинок) в одном документе Firestore
+// (~1 MiB на документ). Поэтому состояния сжимаем плотнее основного фото — меньший
+// размер, — чтобы уложиться в лимит вместе с основным изображением.
+const STATE_MAX_DIMENSION = 512
+
+export async function uploadStatePhoto(blob: Blob): Promise<string> {
+  const objectUrl = blobToObjectUrl(blob)
+  try {
+    const img = await loadImage(objectUrl)
+    return compressToDataUrl(img, STATE_MAX_DIMENSION)
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 function hasTransparency(img: HTMLImageElement): boolean {
   const c = document.createElement('canvas')
   c.width = Math.min(img.naturalWidth || img.width, 64)

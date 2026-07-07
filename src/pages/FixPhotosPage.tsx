@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Check, AlertCircle } from 'lucide-react'
 import { useStore } from '../store'
+import { imageUpdatePatch } from '../lib/item-states'
 
 /** Map wardrobe item name → seed file name */
 const NAME_TO_FILE: Record<string, string> = {
@@ -150,7 +151,7 @@ export function FixPhotosPage() {
           }
 
           const newUrl = compressWithWhiteBg(img)
-          await updateClothing(item.id, { imageUrl: newUrl })
+          await updateClothing(item.id, await imageUpdatePatch(item, newUrl))
           upd++
           setUpdated(upd)
         } catch (e) {

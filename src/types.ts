@@ -25,6 +25,19 @@ export type BodyType =
 
 export type FeaturePreference = 'hide' | 'highlight'
 
+/**
+ * Состояние (вариация) вещи: один и тот же предмет в разном виде — напр. футболка
+ * расправленная / завязанная спереди, рубашка расстёгнутая / застёгнутая. Картинка
+ * генерируется AI-командой от базового фото. Хранится инлайн data-url, как `imageUrl`.
+ */
+export interface ItemState {
+  id: string
+  label: string
+  imageUrl: string
+  /** Команда-описание, которой сгенерили состояние (для истории/повтора). */
+  prompt?: string
+}
+
 export interface ClothingItem {
   id: string
   name: string
@@ -33,6 +46,13 @@ export interface ClothingItem {
   style?: string
   seasons: Season[]
   imageUrl?: string
+  /**
+   * Состояния вещи (включая основное). Пусто/отсутствует = у вещи одно фото (`imageUrl`),
+   * как раньше. При наличии — `imageUrl` дублирует картинку основного состояния
+   * (`defaultStateId`), чтобы весь существующий код читал её без изменений.
+   */
+  states?: ItemState[]
+  defaultStateId?: string
   shopUrl?: string
   notes?: string
 }

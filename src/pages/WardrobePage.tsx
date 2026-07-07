@@ -8,6 +8,7 @@ import { ClothingCard } from '../components/ClothingCard'
 import { Modal } from '../components/Modal'
 import { AddClothingForm } from '../components/AddClothingForm'
 import { WardrobeBoard } from '../components/WardrobeBoard'
+import { imageUpdatePatch } from '../lib/item-states'
 
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as ClothingCategory[]
 
@@ -20,6 +21,13 @@ export function WardrobePage() {
   const filtered = filter === 'all'
     ? wardrobe
     : wardrobe.filter((i) => i.category === filter)
+
+  // Смена фото держит картинку основного состояния в синхроне (если состояния есть).
+  async function handleUpdateImage(id: string, url: string) {
+    const item = wardrobe.find((w) => w.id === id)
+    if (!item) return
+    await updateClothing(id, await imageUpdatePatch(item, url))
+  }
 
   return (
     <div>
@@ -34,7 +42,8 @@ export function WardrobePage() {
               key={item.id}
               item={item}
               onRemove={removeClothing}
-              onUpdateImage={(id, url) => updateClothing(id, { imageUrl: url })}
+              onUpdateImage={handleUpdateImage}
+              onUpdate={updateClothing}
             />
           ))}
         </div>

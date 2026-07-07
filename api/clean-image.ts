@@ -72,7 +72,10 @@ function detectPrompt(label: string, category: unknown): string {
   if (category === 'shoes') {
     extra = ' Render the footwear EMPTY — no foot, leg or skin inside or showing through.'
   } else if (category === 'bags') {
-    extra = ' Keep the same straps and handles — the same number, each whole and intact; do not add or duplicate any.'
+    extra =
+      ' Arrange the strap(s) and handle(s) neatly — hanging straight and untangled, not' +
+      ' twisted, kinked or folded over — but keep the same number, width, material and' +
+      ' color; do not add, remove or duplicate any.'
   }
   return (
     `Extract ONLY this one item from the photo: "${label}". Remove the person, skin, hands, ` +
@@ -81,9 +84,31 @@ function detectPrompt(label: string, category: unknown): string {
     `brighten, whiten or shift the color), the SAME number and state of buttons, zippers and ` +
     `fasteners (do NOT unbutton, unzip, close or restyle it), the SAME real drape, folds and ` +
     `length (do NOT iron, smooth, re-drape, add or remove folds or wrinkles), the SAME cut and ` +
-    `proportions. Do not add, remove or redraw any detail. Pure solid white #FFFFFF background, ` +
+    `proportions. Do not add, remove or redraw any detail. Preserve every piece of metal hardware ` +
+    `exactly — buckles, rings, studs, buttons, zips, chains, clasps and logos — keeping their real ` +
+    `metal color and finish (gold stays gold, silver stays silver); do not simplify, recolor or omit ` +
+    `them. Pure solid white #FFFFFF background, ` +
     `item centered with small even margins, even soft studio lighting, no cast shadows, no ` +
     `reflections, no halo or outline. Output a sharp, high-resolution e-commerce product photo.`
+  )
+}
+
+// Режим «состояния вещи»: на входе уже товарное фото одной вещи, задача — показать ТУ ЖЕ
+// вещь в другом виде по свободной команде («застегни», «завяжи концы спереди»). Здесь,
+// в отличие от detect/clothing-промтов, изменение вида — цель, а не артефакт; поэтому
+// COMMON (который запрещает restyle) не используем, а собираем свой хвост.
+function transformPrompt(instruction: string): string {
+  return (
+    `You are given a product photo of ONE clothing item on a plain background. ` +
+    `Show the SAME item but restyle it exactly as instructed: "${instruction}". ` +
+    `Apply ONLY the change described by the instruction. Keep it strictly the same ` +
+    `garment — the same color and shade, the same print, pattern, fabric, texture, ` +
+    `hardware, proportions and size. Do NOT change the color, do NOT turn it into a ` +
+    `different item, do NOT add or remove parts beyond what the instruction requires. ` +
+    `If a person, hand or skin is visible, remove them and show only the item. ` +
+    `Pure solid white #FFFFFF background, item centered with small even margins, even ` +
+    `soft studio lighting, no cast shadows, no reflections, no halo or outline around ` +
+    `the edges. Output a sharp, high-resolution e-commerce product photo.`
   )
 }
 
@@ -110,9 +135,18 @@ export default async function handler(req: IncomingMessage, res: Res) {
     // содержит несколько вещей (мульти-распознавание): без неё модель оставляет
     // самый «заметный» предмет, а не нужный. С названием — извлекает именно его.
     const label = typeof body?.label === 'string' && body.label.trim() ? body.label.trim() : null
-    // С label (мульти-распознавание, вещь на человеке) — промт верности оригиналу.
-    // Без label (массовая загрузка с вешалки) — прежний «студийный» промт по категории.
-    const prompt = label ? detectPrompt(label, body?.category) : promptForCategory(body?.category)
+    // Свободная команда-трансформация (фича «состояния вещи»): показать ту же вещь в
+    // другом виде. Имеет приоритет над label/категорией.
+    const transform =
+      typeof body?.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : null
+    // С transform — режим состояний; с label (мульти-распознавание, вещь на человеке) —
+    // промт верности оригиналу; без обоих (массовая загрузка с вешалки) — «студийный»
+    // промт по категории.
+    const prompt = transform
+      ? transformPrompt(transform)
+      : label
+        ? detectPrompt(label, body?.category)
+        : promptForCategory(body?.category)
 
     const reqBody = JSON.stringify({
       contents: [
