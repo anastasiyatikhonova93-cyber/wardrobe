@@ -93,22 +93,33 @@ function detectPrompt(label: string, category: unknown): string {
   )
 }
 
-// Режим «состояния вещи»: на входе уже товарное фото одной вещи, задача — показать ТУ ЖЕ
-// вещь в другом виде по свободной команде («застегни», «завяжи концы спереди»). Здесь,
-// в отличие от detect/clothing-промтов, изменение вида — цель, а не артефакт; поэтому
-// COMMON (который запрещает restyle) не используем, а собираем свой хвост.
+// Режим «состояния вещи»: на входе уже товарное фото одной вещи, задача — ПЕРЕСНЯТЬ её в
+// другом виде по свободной команде («расстегни», «застегни», «завяжи концы спереди»).
+// Ключевой урок: изменение вида — ГЛАВНАЯ цель, а не артефакт. Раньше промт начинался с
+// «Show the SAME item» и был перегружен «keep the same / do NOT change» — модель просто
+// копировала вход. Теперь ведём с самой правки, требуем видимого отличия и даём конкретные
+// примеры (в т.ч. русские команды → визуальный результат), чтобы короткая команда
+// однозначно разворачивалась в нужный конечный вид. Сохраняем только ИДЕНТИЧНОСТЬ вещи
+// (цвет/принт/ткань), а форму/драпировку модель обязана перерисовать под изменение.
 function transformPrompt(instruction: string): string {
   return (
-    `You are given a product photo of ONE clothing item on a plain background. ` +
-    `Show the SAME item but restyle it exactly as instructed: "${instruction}". ` +
-    `Apply ONLY the change described by the instruction. Keep it strictly the same ` +
-    `garment — the same color and shade, the same print, pattern, fabric, texture, ` +
-    `hardware, proportions and size. Do NOT change the color, do NOT turn it into a ` +
-    `different item, do NOT add or remove parts beyond what the instruction requires. ` +
-    `If a person, hand or skin is visible, remove them and show only the item. ` +
-    `Pure solid white #FFFFFF background, item centered with small even margins, even ` +
-    `soft studio lighting, no cast shadows, no reflections, no halo or outline around ` +
-    `the edges. Output a sharp, high-resolution e-commerce product photo.`
+    `Take this e-commerce photo of a single clothing item and produce a NEW photo of the ` +
+    `exact same garment restyled so that: "${instruction}". ` +
+    `This is an image EDIT — the result MUST visibly differ from the input and clearly show ` +
+    `the requested change; never return the original unchanged. Re-render the garment with the ` +
+    `new shape, drape and folds that this change naturally produces. Interpret the (possibly ` +
+    `short) instruction as the desired END state and render it fully. Examples: ` +
+    `"расстегни"/unbutton → the shirt or jacket fully OPEN at the front, the two front panels ` +
+    `relaxed apart, collar and lapels laid open, the inner side partly visible; ` +
+    `"застегни"/button up → fully closed and fastened at the front; ` +
+    `"завяжи концы спереди"/tie the front → the hem knotted in a front knot with the midriff gap; ` +
+    `"закатай рукава"/roll the sleeves → sleeves rolled up the forearm. ` +
+    `Keep the garment's IDENTITY unchanged: the same colour and shade, the same print and ` +
+    `pattern, the same fabric and texture, the same buttons and trims — do NOT recolour it and ` +
+    `do NOT turn it into a different type of item. Remove any person, hand or skin. ` +
+    `Pure solid white #FFFFFF background, item centered with small even margins, even soft ` +
+    `studio lighting, no cast shadows, no reflections, no halo or outline around the edges. ` +
+    `Output a sharp, high-resolution e-commerce product photo.`
   )
 }
 
